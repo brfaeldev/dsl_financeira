@@ -81,8 +81,6 @@ class ValorForaDoDominioError(ErroSemantico):
             coluna=coluna,
         )
         self.identificador = identificador
-        self.parametro = parametro
-        self.valor = valor
 
 
 class ParametroDuplicadoError(ErroSemantico):
@@ -95,7 +93,6 @@ class ParametroDuplicadoError(ErroSemantico):
         )
         super().__init__(texto, linha=linha, coluna=coluna)
         self.identificador = identificador
-        self.parametro = parametro
 
 
 class ParametroObrigatorioError(ErroSemantico):
@@ -109,4 +106,3 @@ class ParametroObrigatorioError(ErroSemantico):
             coluna=coluna,
         )
         self.identificador = identificador
-        self.parametro = parametro

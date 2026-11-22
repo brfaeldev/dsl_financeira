@@ -165,10 +165,16 @@ class TestSimulacaoFinanceira(unittest.TestCase):
         tabela_ap = executar(CENARIO_APOSENTADORIA)
         sim_ap = tabela_ap.buscar("Aposentadoria")
         res_ap = Resultado(sim_ap)
-        _, brutos, liquidos, investidos = Interpretador._simular_evolucao(sim_ap)
-        self.assertAlmostEqual(brutos[-1], res_ap.valor_final_bruto, places=9)
-        self.assertAlmostEqual(liquidos[-1], res_ap.valor_final_liquido, places=9)
-        self.assertAlmostEqual(investidos[-1], res_ap.total_investido, places=9)
+        ultimo_mes = Interpretador.simular_detalhado(sim_ap)[-1]
+        self.assertAlmostEqual(
+            ultimo_mes["patrimonio_bruto"], res_ap.valor_final_bruto, places=9
+        )
+        self.assertAlmostEqual(
+            ultimo_mes["patrimonio_liquido"], res_ap.valor_final_liquido, places=9
+        )
+        self.assertAlmostEqual(
+            ultimo_mes["total_investido"], res_ap.total_investido, places=9
+        )
 
     def test_unidades_anuais_ao_ano_e_anos(self):
         """Valida a conversao equivalente de juros compostos para AO_ANO e ANOS."""

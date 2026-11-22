@@ -161,7 +161,7 @@ class AnalisadorSemantico(Interpreter):
 
             # Valida se todos os eventos de fluxo de caixa (APORTE_EXTRA / RESGATE)
             # ocorrem dentro do horizonte temporal [1, periodo].
-            for tipo_evento, mes_ev, valor_ev, linha_ev, col_ev in self._eventos_pendentes:
+            for tipo_evento, mes_ev, _, linha_ev, col_ev in self._eventos_pendentes:
                 if mes_ev <= 0 or mes_ev > simbolo.periodo:
                     raise ValorForaDoDominioError(
                         identificador,
@@ -172,13 +172,11 @@ class AnalisadorSemantico(Interpreter):
                         coluna=col_ev,
                     )
 
-            # A aliquota regressiva base depende do prazo final (n), por isso e
-            # resolvida ao encerrar a leitura de todos os parametros do bloco.
-            if (
-                simbolo.imposto_regressivo
-                or simbolo.imposto_por_safra
-                or simbolo.imposto_come_cotas
-            ):
+            # A aliquota regressiva ou de come-cotas depende do prazo final (n),
+            # por isso e resolvida ao encerrar a leitura de todos os parametros do bloco.
+            if simbolo.imposto_come_cotas:
+                simbolo.imposto = 0.20 if simbolo.periodo <= 12 else 0.15
+            elif simbolo.imposto_regressivo:
                 simbolo.imposto = aliquota_regressiva_ir(simbolo.periodo)
 
             # Verifica se algum resgate parcial excede o saldo disponivel no mes
@@ -420,7 +418,6 @@ class AnalisadorSemantico(Interpreter):
             nome_indice, linha=linha_ind, coluna=col_ind
         )
         simbolo.taxa = (percentual / 100.0) * taxa_indice
-        simbolo.indexador = f"{percentual}% do {nome_indice}"
 
     def _aplicar_taxa_hibrida(self, tree, token_indice, token_valor, token_unidade):
         identificador = self._simbolo_atual.identificador
@@ -453,7 +450,6 @@ class AnalisadorSemantico(Interpreter):
         taxa_fixa = _converter_taxa_para_mensal(valor, token_unidade)
         # Composicao de taxas: (1 + r_indice) * (1 + r_fixa) - 1
         simbolo.taxa = (1.0 + taxa_indice) * (1.0 + taxa_fixa) - 1.0
-        simbolo.indexador = f"{nome_indice} + {valor}% {token_unidade}"
 
     def taxa_hibrida_indice_primeiro(self, tree):
         self._aplicar_taxa_hibrida(

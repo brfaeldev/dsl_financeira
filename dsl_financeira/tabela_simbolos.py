@@ -51,7 +51,6 @@ class Investimento:
         self.taxa_administracao = 0.0     # taxa de administracao/custodia mensal equivalente (decimal)
         self.aportes_extras = []          # lista de tuplas (mes, valor)
         self.resgates = []                # lista de tuplas (mes, valor)
-        self.indexador = None             # descricao opcional do indexador (ex.: '110.0% do CDI')
 
     @property
     def usa_simulacao_detalhada(self):
@@ -66,7 +65,7 @@ class Investimento:
 
     def aliquota_para_mes(self, mes):
         """Retorna a aliquota de IR aplicavel no mes informado."""
-        if self.imposto_regressivo or self.imposto_por_safra or self.imposto_come_cotas:
+        if self.imposto_regressivo:
             # No mes 0 (instante inicial) utiliza-se max(1, mes) para manter a faixa
             # inicial de curto prazo (22,5%) na simulacao mes a mes dos graficos.
             return aliquota_regressiva_ir(max(1, mes))

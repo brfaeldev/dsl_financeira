@@ -13,9 +13,9 @@ Oferece:
 """
 
 import contextlib
+import csv
 import io
 import json
-import math
 import os
 import tempfile
 
@@ -604,14 +604,16 @@ def renderizar_app():
             # Prepara CSV e JSON para download direto
             buf_csv = io.StringIO()
             campos_csv = list(serie_sel[0].keys())
-            buf_csv.write(",".join(campos_csv) + "\n")
+            writer_csv = csv.writer(buf_csv, lineterminator="\n")
+            writer_csv.writerow(campos_csv)
             for linha_s in serie_sel:
-                buf_csv.write(
-                    ",".join(
-                        str(linha_s[c]) if c == "mes" else f"{linha_s[c]:.2f}"
+                writer_csv.writerow(
+                    [
+                        linha_s[c]
+                        if c == "mes"
+                        else (f"{linha_s[c]:.4f}" if c == "aliquota_ir" else f"{linha_s[c]:.2f}")
                         for c in campos_csv
-                    )
-                    + "\n"
+                    ]
                 )
 
             payload_json = {
@@ -665,31 +667,23 @@ def renderizar_app():
                 options=nomes_inv,
                 key="sel_renda",
             )
-            sim_r, res_r, _ = next(
+            sim_r, _, _ = next(
                 item for item in resultados if item[0].identificador == cenario_renda
             )
 
-            patrimonio_base = (
-                res_r.valor_final_liquido_real
-                if sim_r.inflacao > 0
-                else res_r.valor_final_liquido
-            )
-            aliquota_u = sim_r.aliquota_para_mes(max(1, sim_r.periodo))
-            taxa_liq_nom = max(
-                0.0, sim_r.taxa * (1.0 - aliquota_u) - sim_r.taxa_administracao
-            )
-            taxa_usufruto = (
-                max(0.0, ((1.0 + taxa_liq_nom) / (1.0 + sim_r.inflacao)) - 1.0)
-                if sim_r.inflacao > 0
-                else taxa_liq_nom
-            )
-            renda_perpetua = patrimonio_base * taxa_usufruto
+            info_inicial = Interpretador.calcular_simulacao_renda(sim_r, 100.0)
+            patrimonio_base = info_inicial["patrimonio_base"]
+            renda_perpetua = info_inicial["renda_perpetua_maxima"]
 
             retirada_escolhida = st.number_input(
                 "Retirada Mensal Desejada (R$):",
                 min_value=10.0,
                 value=float(max(100.0, round(renda_perpetua * 1.5, 2))),
                 step=100.0,
+            )
+
+            dados_usufruto = Interpretador.calcular_simulacao_renda(
+                sim_r, retirada_escolhida
             )
 
             cr1, cr2, cr3 = st.columns(3)
@@ -700,27 +694,21 @@ def renderizar_app():
                 help="Valor máximo que você pode retirar todo mês sem nunca consumir o patrimônio principal.",
             )
 
-            if taxa_usufruto > 0 and retirada_escolhida <= renda_perpetua + 1e-9:
+            if dados_usufruto["perpetua"]:
                 cr3.metric("Duração Estimada", "Perpétua ( Vitalícia )")
                 st.success(
                     f"Com retirada de **{_moeda(retirada_escolhida)}/mês** (abaixo ou igual à renda perpétua de "
                     f"**{_moeda(renda_perpetua)}/mês**), o patrimônio **nunca se esgota**!"
                 )
             else:
-                saldo_u = patrimonio_base
-                meses_u = 0
-                curva_usufruto = [saldo_u]
-                while saldo_u >= retirada_escolhida and meses_u < 1200:
-                    saldo_u = saldo_u * (1.0 + taxa_usufruto) - retirada_escolhida
-                    meses_u += 1
-                    curva_usufruto.append(max(0.0, saldo_u))
+                meses_u = dados_usufruto["meses_duracao"]
                 anos_u = meses_u // 12
                 resto_m = meses_u % 12
                 cr3.metric(
                     "Duração Estimada",
                     f"{meses_u} meses ({anos_u}a {resto_m}m)",
                 )
-                st.line_chart(curva_usufruto)
+                st.line_chart(dados_usufruto["curva_usufruto"])
 
     # ==================================================================
     # ABA 3: Raio-X do Compilador (Tokens, AST e Tabela de Simbolos)

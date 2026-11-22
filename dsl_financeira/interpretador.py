@@ -58,7 +58,6 @@ def _simular_serie_detalhada(simbolo):
     n = simbolo.periodo
     r = simbolo.taxa
     r_adm = simbolo.taxa_administracao
-    fator_crescimento = (1.0 + r) * (1.0 - r_adm)
 
     extras_por_mes = {}
     for mes_e, val_e in simbolo.aportes_extras:
@@ -75,7 +74,6 @@ def _simular_serie_detalhada(simbolo):
 
     total_investido_acumulado = simbolo.valor_inicial
     total_resgatado_bruto = 0.0
-    total_resgatado_liquido = 0.0
     ir_pago_acumulado = 0.0
     custo_adm_acumulado = 0.0
 
@@ -130,7 +128,6 @@ def _simular_serie_detalhada(simbolo):
                 safras = novas_safras
                 ir_pago_acumulado += ir_resgate
                 total_resgatado_bruto += valor_resgate
-                total_resgatado_liquido += valor_resgate - ir_resgate
 
             # 4. Regime Come-Cotas semestral (meses 6, 12, 18, ...)
             if simbolo.imposto_come_cotas and mes % 6 == 0:
@@ -159,9 +156,6 @@ def _simular_serie_detalhada(simbolo):
                 if rendimento_latente > 1e-12
                 else simbolo.aliquota_para_mes(mes)
             )
-        elif simbolo.imposto_come_cotas:
-            aliquota_efetiva = aliquota_come_cotas
-            ir_latente = rendimento_latente * aliquota_efetiva
         else:
             aliquota_efetiva = simbolo.aliquota_para_mes(mes)
             ir_latente = rendimento_latente * aliquota_efetiva
@@ -190,7 +184,6 @@ def _simular_serie_detalhada(simbolo):
                 "patrimonio_liquido": saldo_liquido,
                 "patrimonio_liquido_real": saldo_liquido_real,
                 "total_resgatado_bruto": total_resgatado_bruto,
-                "total_resgatado_liquido": total_resgatado_liquido,
                 "custo_administracao": custo_adm_acumulado,
             }
         )
@@ -240,15 +233,6 @@ class Resultado:
         # Deflacao pelo indice de inflacao acumulado no periodo: V_real = V_nominal / (1 + i)^n
         fator_inflacao = (1.0 + simbolo.inflacao) ** n
         self.valor_final_liquido_real = self.valor_final_liquido / fator_inflacao
-        self.rendimento_liquido_real = (
-            self.valor_final_liquido_real + self.total_resgatado - self.total_investido
-        )
-        # Taxa real mensal equivalente pela Equacao de Fisher: (1 + r_nom)/(1 + i) - 1
-        self.taxa_real_mensal = (
-            ((1.0 + r) / (1.0 + simbolo.inflacao)) - 1.0
-            if simbolo.inflacao > 0
-            else r
-        )
 
 
 class Interpretador(Interpreter):
@@ -278,20 +262,6 @@ class Interpretador(Interpreter):
     # ------------------------------------------------------------------
     # Simulacao mes a mes
     # ------------------------------------------------------------------
-    @staticmethod
-    def _simular_evolucao(simbolo):
-        """Gera as series temporais (mes 0 ate n) para plotagem das curvas patrimoniais.
-
-        Mantem a assinatura de retorno de 4 listas `(meses, patrimonio_bruto,
-        patrimonio_liquido, investido)` para total compatibilidade com a API e testes.
-        """
-        registros = _simular_serie_detalhada(simbolo)
-        meses = [reg["mes"] for reg in registros]
-        patrimonio_bruto = [reg["patrimonio_bruto"] for reg in registros]
-        patrimonio_liquido = [reg["patrimonio_liquido"] for reg in registros]
-        investido = [reg["total_investido"] for reg in registros]
-        return meses, patrimonio_bruto, patrimonio_liquido, investido
-
     @staticmethod
     def simular_detalhado(simbolo):
         """Retorna a lista completa de dicionarios mensais (0..n) do investimento."""
@@ -719,15 +689,9 @@ class Interpretador(Interpreter):
     # ------------------------------------------------------------------
     # SIMULAR RENDA (Fase de Usufruto / Aposentadoria)
     # ------------------------------------------------------------------
-    def simular_renda(self, tree):
-        identificador = _texto(tree.children[0])
-        valor_retirada = float(tree.children[1])
-        unidade = str(tree.children[2])
-        retirada_mensal = (
-            valor_retirada / 12.0 if unidade == "AO_ANO" else valor_retirada
-        )
-
-        simbolo = self.tabela.buscar(identificador)
+    @staticmethod
+    def calcular_simulacao_renda(simbolo, retirada_mensal):
+        """Calcula a sustentabilidade de retiradas mensais na fase de usufruto."""
         resultado = Resultado(simbolo)
         patrimonio_inicial_usufruto = (
             resultado.valor_final_liquido_real
@@ -749,6 +713,7 @@ class Interpretador(Interpreter):
             taxa_mensal_usufruto = taxa_liquida_nominal
 
         renda_perpetua = patrimonio_inicial_usufruto * taxa_mensal_usufruto
+        curva_usufruto = [patrimonio_inicial_usufruto]
 
         if taxa_mensal_usufruto > 0 and retirada_mensal <= renda_perpetua + 1e-9:
             perpetua = True
@@ -756,6 +721,10 @@ class Interpretador(Interpreter):
         elif taxa_mensal_usufruto == 0:
             perpetua = False
             meses_duracao = int(patrimonio_inicial_usufruto // retirada_mensal)
+            saldo = patrimonio_inicial_usufruto
+            for _ in range(min(meses_duracao, 1200)):
+                saldo = max(0.0, saldo - retirada_mensal)
+                curva_usufruto.append(saldo)
         else:
             perpetua = False
             saldo = patrimonio_inicial_usufruto
@@ -764,17 +733,41 @@ class Interpretador(Interpreter):
             while saldo >= retirada_mensal and meses_duracao < 12000:
                 saldo = saldo * (1.0 + taxa_mensal_usufruto) - retirada_mensal
                 meses_duracao += 1
+                if meses_duracao <= 1200:
+                    curva_usufruto.append(max(0.0, saldo))
             if meses_duracao >= 12000:
                 perpetua = True
                 meses_duracao = math.inf
 
+        return {
+            "identificador": simbolo.identificador,
+            "patrimonio_base": patrimonio_inicial_usufruto,
+            "retirada_mensal": retirada_mensal,
+            "renda_perpetua_maxima": renda_perpetua,
+            "perpetua": perpetua,
+            "meses_duracao": meses_duracao,
+            "curva_usufruto": curva_usufruto,
+        }
+
+    def simular_renda(self, tree):
+        identificador = _texto(tree.children[0])
+        valor_retirada = float(tree.children[1])
+        unidade = str(tree.children[2])
+        retirada_mensal = (
+            valor_retirada / 12.0 if unidade == "AO_ANO" else valor_retirada
+        )
+
+        simbolo = self.tabela.buscar(identificador)
+        dados = self.calcular_simulacao_renda(simbolo, retirada_mensal)
+
         print(f"=== SIMULACAO DE RENDA PASSIVA: {identificador} ===")
-        print(f"{'Patrimonio Base:':<21}{_moeda(patrimonio_inicial_usufruto)}")
-        print(f"{'Retirada Mensal:':<21}{_moeda(retirada_mensal)}")
-        print(f"{'Renda Perpetua Max:':<21}{_moeda(renda_perpetua)}")
-        if perpetua:
+        print(f"{'Patrimonio Base:':<21}{_moeda(dados['patrimonio_base'])}")
+        print(f"{'Retirada Mensal:':<21}{_moeda(dados['retirada_mensal'])}")
+        print(f"{'Renda Perpetua Max:':<21}{_moeda(dados['renda_perpetua_maxima'])}")
+        if dados["perpetua"]:
             print(f"{'Duracao Estimada:':<21}Perpetua (nao consome o principal)")
         else:
+            meses_duracao = dados["meses_duracao"]
             anos = meses_duracao // 12
             meses_rest = meses_duracao % 12
             print(
@@ -782,11 +775,4 @@ class Interpretador(Interpreter):
                 f"({anos} anos e {meses_rest} meses)"
             )
 
-        return {
-            "identificador": identificador,
-            "patrimonio_base": patrimonio_inicial_usufruto,
-            "retirada_mensal": retirada_mensal,
-            "renda_perpetua_maxima": renda_perpetua,
-            "perpetua": perpetua,
-            "meses_duracao": meses_duracao,
-        }
+        return dados
