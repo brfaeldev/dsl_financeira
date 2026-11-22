@@ -9,6 +9,8 @@ de fornecer a funcao fachada `executar()` que orquestra o pipeline completo.
 from .erros import (
     DeclaracaoDuplicadaError,
     ErroSemantico,
+    IndiceDuplicadoError,
+    IndiceNaoDeclaradoError,
     InvestimentoNaoDeclaradoError,
     ParametroDuplicadoError,
     ParametroObrigatorioError,
@@ -31,6 +33,8 @@ __all__ = [
     "aliquota_regressiva_ir",
     "ErroSemantico",
     "DeclaracaoDuplicadaError",
+    "IndiceDuplicadoError",
+    "IndiceNaoDeclaradoError",
     "InvestimentoNaoDeclaradoError",
     "ParametroDuplicadoError",
     "ParametroObrigatorioError",

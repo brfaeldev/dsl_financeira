@@ -29,25 +29,45 @@ class ErroSemantico(Exception):
 class DeclaracaoDuplicadaError(ErroSemantico):
     """Declaracao duplicada do mesmo investimento na Tabela de Simbolos."""
 
+    def __init__(self, identificador, linha=None, coluna=None, mensagem=None):
+        texto = mensagem or (
+            f"Investimento '{identificador}' ja foi declarado anteriormente."
+        )
+        super().__init__(texto, linha=linha, coluna=coluna)
+        self.identificador = identificador
+
+
+class IndiceDuplicadoError(DeclaracaoDuplicadaError):
+    """Declaracao duplicada do mesmo indexador macroeconomico na Tabela de Simbolos."""
+
     def __init__(self, identificador, linha=None, coluna=None):
         super().__init__(
-            f"Investimento '{identificador}' ja foi declarado anteriormente.",
+            identificador,
             linha=linha,
             coluna=coluna,
+            mensagem=f"Indice '{identificador}' ja foi declarado anteriormente.",
         )
-        self.identificador = identificador
 
 
 class InvestimentoNaoDeclaradoError(ErroSemantico):
-    """Referencia a um investimento nao declarado (IMPRIMIR / GERAR / COMPARAR)."""
+    """Referencia a um investimento nao declarado (IMPRIMIR / GERAR / COMPARAR / EXPORTAR / SIMULAR)."""
+
+    def __init__(self, identificador, linha=None, coluna=None, mensagem=None):
+        texto = mensagem or f"Investimento '{identificador}' nao foi declarado."
+        super().__init__(texto, linha=linha, coluna=coluna)
+        self.identificador = identificador
+
+
+class IndiceNaoDeclaradoError(InvestimentoNaoDeclaradoError):
+    """Referencia a um indexador macroeconomico nao declarado (TAXA ... DO / INFLACAO)."""
 
     def __init__(self, identificador, linha=None, coluna=None):
         super().__init__(
-            f"Investimento '{identificador}' nao foi declarado.",
+            identificador,
             linha=linha,
             coluna=coluna,
+            mensagem=f"Indice '{identificador}' nao foi declarado.",
         )
-        self.identificador = identificador
 
 
 class ValorForaDoDominioError(ErroSemantico):

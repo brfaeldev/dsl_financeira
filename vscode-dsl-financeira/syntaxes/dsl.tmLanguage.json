@@ -1,0 +1,69 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "DSL Financeira",
+  "scopeName": "source.dsl-financeira",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.dsl-financeira",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.dsl-financeira",
+      "begin": "\"",
+      "end": "\""
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.dsl-financeira",
+          "match": "\\b(INVESTIMENTO|FIM|INDICE|IMPRIMIR|RESUMO|GERAR|GRAFICO|GRAFICO_INTERATIVO|RELATORIO|COMPARAR|EXPORTAR|CSV|JSON|SIMULAR|RENDA|RETIRADA)\\b"
+        },
+        {
+          "name": "variable.parameter.dsl-financeira",
+          "match": "\\b(VALOR_INICIAL|APORTE|APORTE_EXTRA|RESGATE|PERIODO|TAXA|TAXA_ADMINISTRACAO|INFLACAO|IMPOSTO)\\b"
+        },
+        {
+          "name": "constant.language.dsl-financeira",
+          "match": "\\b(POR|NO_MES|DO|MESES|ANOS|PORCENTO|AO_MES|AO_ANO|REGRESSIVO|POR_SAFRA|COME_COTAS)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.dsl-financeira",
+          "match": "-?\\b[0-9]+(\\.[0-9]+)?\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.dsl-financeira",
+          "match": "\\+"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "vscode-dsl-financeira",
+  "displayName": "DSL Financeira Syntax Highlighting",
+  "description": "Realce de sintaxe (TextMate) para arquivos .dsl da DSL Financeira.",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "dsl-financeira",
+        "aliases": [
+          "DSL Financeira",
+          "dsl-financeira"
+        ],
+        "extensions": [
+          ".dsl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "dsl-financeira",
+        "scopeName": "source.dsl-financeira",
+        "path": "./syntaxes/dsl.tmLanguage.json"
+      }
+    ]
+  }
+}

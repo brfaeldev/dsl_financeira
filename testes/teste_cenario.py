@@ -3,11 +3,16 @@ Suite de Testes Automatizados da DSL Financeira (teste_cenario.py)
 
 Valida a aderencia arquitetural do compilador/interpretador (padrao Visitor e
 cache do parser), a precisao matematica das simulacoes financeiras, a captura de
-erros semanticos e a geracao de graficos individuais e comparativos.
+erros semanticos, as evolucoes de dominio (unidades anuais, inflacao, indices,
+fluxo dinamico, taxa de administracao, come-cotas, IR por safra e renda passiva)
+e a geracao de graficos, exportacoes CSV/JSON/HTML, relatorios e REPL.
 """
 
 import contextlib
+import csv
 import io
+import json
+import math
 import os
 import tempfile
 import unittest
@@ -22,9 +27,11 @@ from dsl_financeira import (
     criar_parser,
     executar,
 )
-from dsl_financeira.cli import main as cli_main
+from dsl_financeira.cli import iniciar_repl, main as cli_main
 from dsl_financeira.erros import (
     DeclaracaoDuplicadaError,
+    IndiceDuplicadoError,
+    IndiceNaoDeclaradoError,
     InvestimentoNaoDeclaradoError,
     ParametroDuplicadoError,
     ParametroObrigatorioError,
@@ -162,6 +169,153 @@ class TestSimulacaoFinanceira(unittest.TestCase):
         self.assertAlmostEqual(brutos[-1], res_ap.valor_final_bruto, places=9)
         self.assertAlmostEqual(liquidos[-1], res_ap.valor_final_liquido, places=9)
         self.assertAlmostEqual(investidos[-1], res_ap.total_investido, places=9)
+
+    def test_unidades_anuais_ao_ano_e_anos(self):
+        """Valida a conversao equivalente de juros compostos para AO_ANO e ANOS."""
+        codigo = """
+        INVESTIMENTO "Anual"
+            VALOR_INICIAL 10000.00
+            PERIODO 2 ANOS
+            TAXA 12.0 PORCENTO AO_ANO
+            IMPOSTO REGRESSIVO
+        FIM
+        """
+        tabela = executar(codigo)
+        simbolo = tabela.buscar("Anual")
+        self.assertEqual(simbolo.periodo, 24)
+        self.assertAlmostEqual(simbolo.taxa, (1.12 ** (1 / 12)) - 1, places=12)
+        res = Resultado(simbolo)
+        # 10000 * (1.12)^2 = 12544.00
+        self.assertAlmostEqual(res.valor_final_bruto, 12544.00, places=6)
+
+    def test_inflacao_e_rentabilidade_real(self):
+        """Valida a deflacao do patrimonio liquido pelo indice de inflacao."""
+        codigo = """
+        INVESTIMENTO "ComInflacao"
+            VALOR_INICIAL 10000.00
+            PERIODO 1 ANOS
+            TAXA 10.0 PORCENTO AO_ANO
+            INFLACAO 4.5 PORCENTO AO_ANO
+            IMPOSTO 0.0 PORCENTO
+        FIM
+        """
+        tabela = executar(codigo)
+        simbolo = tabela.buscar("ComInflacao")
+        res = Resultado(simbolo)
+        self.assertAlmostEqual(res.valor_final_liquido, 11000.00, places=6)
+        self.assertAlmostEqual(
+            res.valor_final_liquido_real, 11000.00 / 1.045, places=6
+        )
+
+    def test_indexadores_pos_fixados_cdi_e_hibrido_ipca_mais(self):
+        """Valida INDICE global, TAXA % DO 'CDI', TAXA 'IPCA' + fixa e INFLACAO 'IPCA'."""
+        codigo = """
+        INDICE "CDI" 1.0 PORCENTO AO_MES
+        INDICE "IPCA" 4.5 PORCENTO AO_ANO
+
+        INVESTIMENTO "CDB_110_CDI"
+            VALOR_INICIAL 10000.00
+            PERIODO 12 MESES
+            TAXA 110.0 PORCENTO DO "CDI"
+            INFLACAO "IPCA"
+            IMPOSTO REGRESSIVO
+        FIM
+
+        INVESTIMENTO "Tesouro_IPCA_Mais"
+            VALOR_INICIAL 10000.00
+            PERIODO 1 ANOS
+            TAXA "IPCA" + 6.0 PORCENTO AO_ANO
+            INFLACAO "IPCA"
+            IMPOSTO 15.0 PORCENTO
+        FIM
+        """
+        tabela = executar(codigo)
+        cdb = tabela.buscar("CDB_110_CDI")
+        self.assertAlmostEqual(cdb.taxa, 0.011, places=12)
+
+        tesouro = tabela.buscar("Tesouro_IPCA_Mais")
+        taxa_anual_composta = 1.045 * 1.06 - 1.0
+        taxa_mensal_esperada = (1.0 + taxa_anual_composta) ** (1.0 / 12.0) - 1.0
+        self.assertAlmostEqual(tesouro.taxa, taxa_mensal_esperada, places=12)
+
+    def test_eventos_fluxo_caixa_aporte_extra_e_resgate(self):
+        """Valida APORTE_EXTRA e RESGATE parcial ao longo do periodo."""
+        codigo = """
+        INVESTIMENTO "FluxoDinamico"
+            VALOR_INICIAL 5000.00
+            PERIODO 12 MESES
+            APORTE_EXTRA 2000.00 NO_MES 6
+            RESGATE 1000.00 NO_MES 10
+            TAXA 1.0 PORCENTO AO_MES
+            IMPOSTO 15.0 PORCENTO
+        FIM
+        """
+        tabela = executar(codigo)
+        simbolo = tabela.buscar("FluxoDinamico")
+        res = Resultado(simbolo)
+        self.assertEqual(res.total_investido, 7000.00)
+        self.assertEqual(res.total_resgatado, 1000.00)
+        self.assertGreater(res.valor_final_liquido, 6000.00)
+
+    def test_taxa_administracao_come_cotas_e_ir_por_safra(self):
+        """Valida TAXA_ADMINISTRACAO, IMPOSTO COME_COTAS e IMPOSTO REGRESSIVO POR_SAFRA."""
+        codigo = """
+        INVESTIMENTO "SafraGlobal"
+            VALOR_INICIAL 1000.00
+            APORTE 1000.00 POR 12 MESES
+            TAXA 1.0 PORCENTO AO_MES
+            IMPOSTO REGRESSIVO
+        FIM
+
+        INVESTIMENTO "SafraIndividual"
+            VALOR_INICIAL 1000.00
+            APORTE 1000.00 POR 12 MESES
+            TAXA 1.0 PORCENTO AO_MES
+            IMPOSTO REGRESSIVO POR_SAFRA
+        FIM
+
+        INVESTIMENTO "FundoComeCotas"
+            VALOR_INICIAL 10000.00
+            PERIODO 12 MESES
+            TAXA 1.0 PORCENTO AO_MES
+            TAXA_ADMINISTRACAO 0.50 PORCENTO AO_ANO
+            IMPOSTO COME_COTAS
+        FIM
+        """
+        tabela = executar(codigo)
+        res_global = Resultado(tabela.buscar("SafraGlobal"))
+        res_safra = Resultado(tabela.buscar("SafraIndividual"))
+        # Na apuracao por safra, os aportes dos ultimos 6 meses caem na faixa de 22.5%
+        # (em vez de 20% do prazo total de 12 meses), gerando IR ligeiramente maior
+        self.assertGreater(res_safra.imposto_renda, res_global.imposto_renda)
+
+        res_fundo = Resultado(tabela.buscar("FundoComeCotas"))
+        self.assertGreater(res_fundo.custo_administracao, 0.0)
+        self.assertGreater(res_fundo.imposto_renda, 0.0)
+
+    def test_simulacao_renda_passiva_usufruto(self):
+        """Valida o comando SIMULAR RENDA para retiradas perpetuas e finitas."""
+        codigo = """
+        INVESTIMENTO "ReservaRenda"
+            VALOR_INICIAL 100000.00
+            PERIODO 12 MESES
+            TAXA 1.0 PORCENTO AO_MES
+            IMPOSTO 0.0 PORCENTO
+        FIM
+        SIMULAR RENDA "ReservaRenda" RETIRADA 500.00 AO_MES
+        SIMULAR RENDA "ReservaRenda" RETIRADA 5000.00 AO_MES
+        """
+        ast = analisar(codigo)
+        tabela = AnalisadorSemantico().analisar(ast)
+        interp = Interpretador(tabela)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            res_perpetua = interp.simular_renda(ast.children[1])
+            res_finita = interp.simular_renda(ast.children[2])
+        self.assertTrue(res_perpetua["perpetua"])
+        self.assertEqual(res_perpetua["meses_duracao"], math.inf)
+        self.assertFalse(res_finita["perpetua"])
+        self.assertGreater(res_finita["meses_duracao"], 20)
 
 
 class TestAnaliseSemantica(unittest.TestCase):
@@ -324,9 +478,51 @@ class TestAnaliseSemantica(unittest.TestCase):
         with self.assertRaises(InvestimentoNaoDeclaradoError):
             analisador.tabela.buscar("Incompleto")
 
+    def test_erros_semanticos_indices_e_eventos_fluxo_caixa(self):
+        with self.assertRaises(IndiceNaoDeclaradoError):
+            executar(
+                """
+                INVESTIMENTO "SemCDI"
+                    VALOR_INICIAL 1000.00
+                    PERIODO 12 MESES
+                    TAXA 100.0 PORCENTO DO "CDI"
+                FIM
+                """
+            )
+
+        with self.assertRaises(IndiceDuplicadoError):
+            executar(
+                """
+                INDICE "CDI" 10.0 PORCENTO AO_ANO
+                INDICE "CDI" 11.0 PORCENTO AO_ANO
+                """
+            )
+
+        with self.assertRaises(ValorForaDoDominioError):
+            executar(
+                """
+                INVESTIMENTO "EventoForaDoPrazo"
+                    VALOR_INICIAL 1000.00
+                    PERIODO 12 MESES
+                    APORTE_EXTRA 500.00 NO_MES 24
+                FIM
+                """
+            )
+
+        with self.assertRaises(ValorForaDoDominioError):
+            executar(
+                """
+                INVESTIMENTO "ResgateExcessivo"
+                    VALOR_INICIAL 1000.00
+                    PERIODO 12 MESES
+                    RESGATE 5000.00 NO_MES 6
+                FIM
+                """
+            )
+
 
 class TestGeracaoGraficos(unittest.TestCase):
-    """Valida a geracao de graficos individuais e comparativos em diretorio isolado."""
+    """Valida a geracao de graficos, exportacoes CSV/JSON/HTML e relatorios Markdown."""
 
     def test_gerar_grafico_individual(self):
         codigo = """
@@ -419,9 +615,58 @@ class TestGeracaoGraficos(unittest.TestCase):
                 os.path.exists(os.path.join(tmpdir, "grafico_CDB_1_2.png"))
             )
 
+    def test_exportar_csv_json_grafico_interativo_e_relatorio(self):
+        codigo = """
+        INVESTIMENTO "A"
+            VALOR_INICIAL 5000.00
+            APORTE 500.00 POR 12 MESES
+            TAXA 0.8 PORCENTO AO_MES
+            INFLACAO 0.35 PORCENTO AO_MES
+            IMPOSTO 15.0 PORCENTO
+        FIM
+        INVESTIMENTO "B"
+            VALOR_INICIAL 5000.00
+            APORTE 500.00 POR 12 MESES
+            TAXA 1.0 PORCENTO AO_MES
+            IMPOSTO REGRESSIVO
+        FIM
+        EXPORTAR CSV "A"
+        EXPORTAR JSON "A" "B"
+        GERAR GRAFICO_INTERATIVO "A" "B"
+        GERAR RELATORIO "relatorio_teste.md"
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                executar(codigo, diretorio_saida=tmpdir)
+
+            arq_csv = os.path.join(tmpdir, "evolucao_A.csv")
+            arq_json = os.path.join(tmpdir, "evolucao_comparativa_A_vs_B.json")
+            arq_html = os.path.join(
+                tmpdir, "grafico_interativo_comparativo_A_vs_B.html"
+            )
+            arq_md = os.path.join(tmpdir, "relatorio_teste.md")
+
+            self.assertTrue(os.path.exists(arq_csv))
+            self.assertTrue(os.path.exists(arq_json))
+            self.assertTrue(os.path.exists(arq_html))
+            self.assertTrue(os.path.exists(arq_md))
+
+            with open(arq_csv, "r", encoding="utf-8") as f:
+                linhas_csv = list(csv.DictReader(f))
+            self.assertEqual(len(linhas_csv), 13)  # mes 0 ate 12
+
+            with open(arq_json, "r", encoding="utf-8") as f:
+                dados_json = json.load(f)
+            self.assertEqual(len(dados_json["investimentos"]), 2)
+
+            with open(arq_md, "r", encoding="utf-8") as f:
+                texto_md = f.read()
+            self.assertIn("Relatorio Consolidado de Simulacao Financeira", texto_md)
+
 
 class TestCLI(unittest.TestCase):
-    """Valida a interface de linha de comando (cli.py)."""
+    """Valida a interface de linha de comando (cli.py) e o REPL interativo."""
 
     def test_cli_execucao_sucesso_e_help(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -464,6 +709,73 @@ class TestCLI(unittest.TestCase):
             with contextlib.redirect_stderr(err_semantico):
                 self.assertEqual(cli_main(["dsl_financeira", arq_semantico]), 1)
             self.assertIn("[Erro Semantico]", err_semantico.getvalue())
+
+    def test_repl_interativo_e_gramatica_vscode(self):
+        sessao_repl = (
+            'INDICE "CDI" 1.0 PORCENTO AO_MES\n'
+            'INVESTIMENTO "TesteREPL"\n'
+            "    VALOR_INICIAL 1000.00\n"
+            "    PERIODO 12 MESES\n"
+            '    TAXA 100.0 PORCENTO DO "CDI"\n'
+            "FIM\n"
+            "LISTAR\n"
+            'IMPRIMIR RESUMO "TesteREPL"\n'
+            "SAIR\n"
+        )
+        entrada = io.StringIO(sessao_repl)
+        saida = io.StringIO()
+        erro = io.StringIO()
+        codigo = iniciar_repl(entrada=entrada, saida=saida, erro_saida=erro)
+        self.assertEqual(codigo, 0)
+        self.assertIn("TesteREPL", saida.getvalue())
+        self.assertIn("RESUMO DO INVESTIMENTO: TesteREPL", saida.getvalue())
+
+        caminho_tm = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "vscode-dsl-financeira",
+            "syntaxes",
+            "dsl.tmLanguage.json",
+        )
+        self.assertTrue(os.path.exists(caminho_tm))
+        with open(caminho_tm, "r", encoding="utf-8") as f:
+            gramatica_tm = json.load(f)
+        self.assertEqual(gramatica_tm["scopeName"], "source.dsl-financeira")
+
+    def test_playground_streamlit_funcoes_core(self):
+        from app import (
+            compilar_e_simular_dsl,
+            gerar_bloco_investimento_dsl,
+            gerar_declaracao_indice_dsl,
+            listar_exemplos_disponiveis,
+        )
+
+        exemplos = listar_exemplos_disponiveis()
+        self.assertIn("aposentadoria.dsl", exemplos)
+
+        cod_ind = gerar_declaracao_indice_dsl("CDI", 10.75, "AO_ANO")
+        cod_inv = gerar_bloco_investimento_dsl(
+            nome="CDB_Playground",
+            valor_inicial=5000.0,
+            usar_aporte=True,
+            aporte_mensal=500.0,
+            prazo=12,
+            unidade_prazo="MESES",
+            modo_taxa="Pos-Fixada (% de Indice)",
+            taxa_valor=110.0,
+            indice_taxa="CDI",
+            modo_imposto="REGRESSIVO",
+        )
+        script_completo = f"{cod_ind}\n{cod_inv}\n"
+        res = compilar_e_simular_dsl(script_completo)
+        self.assertTrue(res["sucesso"])
+        self.assertEqual(len(res["resultados"]), 1)
+        self.assertIn("RESUMO DO INVESTIMENTO: CDB_Playground", res["console_output"])
+        self.assertGreater(len(res["tokens"]), 5)
+        self.assertIn("declaracao", res["ast_pretty"])
+
+        res_erro = compilar_e_simular_dsl('IMPRIMIR RESUMO "NaoDeclarado"')
+        self.assertFalse(res_erro["sucesso"])
+        self.assertEqual(res_erro["tipo_erro"], "Semantico")
 
 
 if __name__ == "__main__":

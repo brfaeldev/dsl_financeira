@@ -1,27 +1,44 @@
 // ============================================================================
 // Especificacao da Gramatica Formal EBNF (gramatica.lark)
 //
-// Define as regras sintaticas (declaracoes de investimento, parametros e
-// comandos de saida) e os padroes lexicos (identificadores, numeros e
-// comentarios) utilizados pelo gerador de parsers Lark para construir a AST.
+// Define as regras sintaticas (declaracoes de indexadores, investimentos,
+// parametros financeiros/tributarios e comandos de saida/simulacao) e os
+// padroes lexicos utilizados pelo gerador de parsers Lark para construir a AST.
 // ============================================================================
 //
-// Gramatica em notacao EBNF (conforme o artigo IEEE):
-// programa          ::= (declaracao | comando)+
+// Gramatica em notacao EBNF:
+// programa          ::= (declaracao_indice | declaracao | comando)+
+// declaracao_indice ::= "INDICE" STRING NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
 // declaracao        ::= "INVESTIMENTO" STRING bloco_parametros "FIM"
 // bloco_parametros  ::= parametro+
 // parametro         ::= "VALOR_INICIAL" NUMBER
-//                     | "APORTE" NUMBER "POR" INT "MESES"
-//                     | "PERIODO" INT "MESES"
-//                     | "TAXA" NUMBER "PORCENTO" "AO_MES"
+//                     | "APORTE" NUMBER "POR" INT ("MESES" | "ANOS")
+//                     | "APORTE_EXTRA" NUMBER "NO_MES" INT
+//                     | "RESGATE" NUMBER "NO_MES" INT
+//                     | "PERIODO" INT ("MESES" | "ANOS")
+//                     | "TAXA" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
+//                     | "TAXA" NUMBER "PORCENTO" "DO" STRING
+//                     | "TAXA" STRING "+" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
+//                     | "TAXA" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO") "+" STRING
+//                     | "TAXA_ADMINISTRACAO" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
+//                     | "INFLACAO" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
+//                     | "INFLACAO" STRING
 //                     | "IMPOSTO" NUMBER "PORCENTO"
-//                     | "IMPOSTO" "REGRESSIVO"
+//                     | "IMPOSTO" "REGRESSIVO" ["POR_SAFRA"]
+//                     | "IMPOSTO" "COME_COTAS"
 // comando           ::= "IMPRIMIR" "RESUMO" STRING
 //                     | "GERAR" "GRAFICO" STRING+
+//                     | "GERAR" "GRAFICO_INTERATIVO" STRING+
 //                     | "COMPARAR" "GRAFICO" STRING STRING+
+//                     | "EXPORTAR" ("CSV" | "JSON") STRING+
+//                     | "GERAR" "RELATORIO" STRING+
+//                     | "SIMULAR" "RENDA" STRING "RETIRADA" NUMBER ("AO_MES" | "AO_ANO")
 
-// Regra inicial: um script .dsl contem uma ou mais declaracoes e/ou comandos
-programa: (declaracao | comando)+
+// Regra inicial: um script .dsl contem declaracoes de indices, investimentos e/ou comandos
+programa: (declaracao_indice | declaracao | comando)+
+
+// Declaracao global de um indexador macroeconomico (ex.: CDI, SELIC, IPCA)
+declaracao_indice: "INDICE" STRING numero "PORCENTO" UNIDADE_TAXA
 
 // Bloco declarativo que registra um novo cenario de investimento na Tabela de Simbolos
 declaracao: "INVESTIMENTO" STRING bloco_parametros "FIM"
@@ -29,21 +46,40 @@ declaracao: "INVESTIMENTO" STRING bloco_parametros "FIM"
 bloco_parametros: parametro+
 
 // O prefixo '?' (inline rule do Lark) achata o no intermediario na AST, fazendo
-// a arvore expor diretamente a regra filha (ex.: valor_inicial, aporte, taxa)
-// para despacho automatico nos metodos do AST Visitor (Interpreter).
+// a arvore expor diretamente a regra filha para despacho automatico no AST Visitor.
 ?parametro: valor_inicial
           | aporte
+          | aporte_extra
+          | resgate
           | periodo
           | taxa
+          | taxa_administracao
+          | inflacao
           | imposto
           | imposto_regressivo
+          | imposto_regressivo_safra
+          | imposto_come_cotas
 
 valor_inicial: "VALOR_INICIAL" numero
-aporte: "APORTE" numero "POR" INT "MESES"
-periodo: "PERIODO" INT "MESES"
-taxa: "TAXA" numero "PORCENTO" "AO_MES"
+aporte: "APORTE" numero "POR" INT UNIDADE_PERIODO
+aporte_extra: "APORTE_EXTRA" numero "NO_MES" INT
+resgate: "RESGATE" numero "NO_MES" INT
+periodo: "PERIODO" INT UNIDADE_PERIODO
+
+taxa: "TAXA" numero "PORCENTO" UNIDADE_TAXA
+    | "TAXA" numero "PORCENTO" "DO" STRING             -> taxa_indexada
+    | "TAXA" STRING "+" numero "PORCENTO" UNIDADE_TAXA -> taxa_hibrida_indice_primeiro
+    | "TAXA" numero "PORCENTO" UNIDADE_TAXA "+" STRING -> taxa_hibrida_fixa_primeiro
+
+taxa_administracao: "TAXA_ADMINISTRACAO" numero "PORCENTO" UNIDADE_TAXA
+
+inflacao: "INFLACAO" numero "PORCENTO" UNIDADE_TAXA
+        | "INFLACAO" STRING -> inflacao_indice
+
 imposto: "IMPOSTO" numero "PORCENTO"
 imposto_regressivo: "IMPOSTO" "REGRESSIVO"
+imposto_regressivo_safra: "IMPOSTO" "REGRESSIVO" "POR_SAFRA"
+imposto_come_cotas: "IMPOSTO" "COME_COTAS"
 
 // Regra inline que aceita tanto literais decimais (NUMBER) quanto inteiros (INT),
 // mantendo os tokens lexicos disjuntos para compatibilidade entre LALR(1) e Earley.
@@ -52,18 +88,30 @@ imposto_regressivo: "IMPOSTO" "REGRESSIVO"
 // Regras de acao executadas pelo Interpretador apos a validacao semantica
 ?comando: imprimir_resumo
         | gerar_grafico
+        | gerar_grafico_interativo
         | comparar_grafico
+        | exportar_csv
+        | exportar_json
+        | gerar_relatorio
+        | simular_renda
 
 imprimir_resumo: "IMPRIMIR" "RESUMO" STRING
 gerar_grafico: "GERAR" "GRAFICO" STRING+
+gerar_grafico_interativo: "GERAR" "GRAFICO_INTERATIVO" STRING+
 // COMPARAR GRAFICO exige ao menos dois identificadores na propria gramatica
 comparar_grafico: "COMPARAR" "GRAFICO" STRING STRING+
+exportar_csv: "EXPORTAR" "CSV" STRING+
+exportar_json: "EXPORTAR" "JSON" STRING+
+gerar_relatorio: "GERAR" "RELATORIO" STRING+
+simular_renda: "SIMULAR" "RENDA" STRING "RETIRADA" numero UNIDADE_TAXA
 
 // Tokens lexicos:
 // NUMBER (decimais) e INT (inteiros) sao disjuntos e aceitam sinal negativo
 // opcional ('-?') no Lexer para que valores negativos nao gerem erro de sintaxe
 // obscuro, sendo capturados na Analise Semantica com diagnostico especifico de
 // dominio (ValorForaDoDominioError).
+UNIDADE_PERIODO: "MESES" | "ANOS"
+UNIDADE_TAXA: "AO_MES" | "AO_ANO"
 STRING: /"[^"]*"/
 NUMBER: /-?[0-9]+\.[0-9]+/
 INT: /-?[0-9]+/
