@@ -690,6 +690,7 @@ def _renderizar_aba_console(st, resultado_exec):
 # 3. Orquestrador Principal da Aplicacao Streamlit
 # ----------------------------------------------------------------------
 def renderizar_app():
+    """Ponto de entrada principal da interface Streamlit, orquestrando sidebar, editor e abas."""
     import streamlit as st
 
     st.set_page_config(

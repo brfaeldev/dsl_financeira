@@ -1,3 +1,10 @@
+# ============================================================================
+# Dependencias de Execucao do Projeto (requirements.txt)
+#
+# Lista as bibliotecas externas necessarias para o front-end sintatico (Lark),
+# renderizacao de graficos (Matplotlib) e Playground Web (Streamlit).
+# ============================================================================
+
 lark>=1.1.0
 matplotlib>=3.7.0
 streamlit>=1.30.0

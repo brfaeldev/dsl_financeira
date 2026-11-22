@@ -17,6 +17,7 @@ from .erros import ErroSemantico
 
 
 def _criar_arg_parser():
+    """Configura e retorna o parser de argumentos da linha de comando (argparse)."""
     parser = argparse.ArgumentParser(
         prog="dsl_financeira",
         description="Interpretador da DSL Financeira para modelagem e simulacao de investimentos.",

@@ -99,6 +99,7 @@ class Interpretador(Interpreter):
     # IMPRIMIR RESUMO
     # ------------------------------------------------------------------
     def imprimir_resumo(self, tree):
+        """Calcula e exibe no console o resumo consolidado do investimento."""
         identificador = _texto(tree.children[0])
         simbolo = self.tabela.buscar(identificador)
         resultado = Resultado(simbolo)
@@ -121,6 +122,7 @@ class Interpretador(Interpreter):
     # GERAR GRAFICO / COMPARAR GRAFICO (Matplotlib PNG)
     # ------------------------------------------------------------------
     def gerar_grafico(self, tree):
+        """Gera um grafico PNG individual (ou delega para comparativo se houver varios)."""
         identificadores = [_texto(t) for t in tree.children]
         if len(identificadores) > 1:
             return self.comparar_grafico(tree)
@@ -138,6 +140,7 @@ class Interpretador(Interpreter):
         return arquivo
 
     def comparar_grafico(self, tree):
+        """Gera um grafico PNG comparando a evolucao de dois ou mais investimentos."""
         identificadores = [_texto(t) for t in tree.children]
         series_por_simbolo = []
         for identificador in identificadores:
@@ -158,6 +161,7 @@ class Interpretador(Interpreter):
     # GERAR GRAFICO_INTERATIVO (HTML Interativo com Plotly)
     # ------------------------------------------------------------------
     def gerar_grafico_interativo(self, tree):
+        """Gera um grafico HTML interativo (Plotly) para um ou mais investimentos."""
         identificadores = [_texto(t) for t in tree.children]
         series_por_simbolo = []
         for identificador in identificadores:
@@ -187,6 +191,7 @@ class Interpretador(Interpreter):
     # EXPORTAR CSV / EXPORTAR JSON / GERAR RELATORIO
     # ------------------------------------------------------------------
     def exportar_csv(self, tree):
+        """Exporta a serie temporal mensal (0..n) de cada investimento informado em CSV."""
         identificadores = [_texto(t) for t in tree.children]
         arquivos = []
         for identificador in identificadores:
@@ -205,6 +210,7 @@ class Interpretador(Interpreter):
         return arquivos[0] if len(arquivos) == 1 else arquivos
 
     def exportar_json(self, tree):
+        """Exporta parametros, resumo e evolucao mensal dos investimentos em JSON."""
         identificadores = [_texto(t) for t in tree.children]
         itens_simulacao = []
         for identificador in identificadores:
@@ -231,6 +237,7 @@ class Interpretador(Interpreter):
         return arquivo
 
     def gerar_relatorio(self, tree):
+        """Gera um relatorio consolidado em Markdown comparando os investimentos."""
         nome_entrada = _texto(tree.children[0]).strip()
         if len(tree.children) > 1:
             simbolos = [self.tabela.buscar(_texto(t)) for t in tree.children[1:]]
@@ -255,6 +262,7 @@ class Interpretador(Interpreter):
     # SIMULAR RENDA (Fase de Usufruto / Aposentadoria)
     # ------------------------------------------------------------------
     def simular_renda(self, tree):
+        """Simula e imprime a duracao do patrimonio acumulado sob retiradas periodicas."""
         identificador = _texto(tree.children[0])
         valor_retirada = float(tree.children[1])
         unidade = str(tree.children[2])

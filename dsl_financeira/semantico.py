@@ -72,6 +72,7 @@ class AnalisadorSemantico(Interpreter):
     # Declaracao de Indexadores Macroeconomicos (CDI, SELIC, IPCA, etc.)
     # ------------------------------------------------------------------
     def declaracao_indice(self, tree):
+        """Valida e registra um indexador macroeconomico global na Tabela de Simbolos."""
         identificador = _texto(tree.children[0])
         linha, coluna = _posicao(tree)
         if not identificador.strip():
@@ -103,6 +104,7 @@ class AnalisadorSemantico(Interpreter):
     # Declaracoes de Investimento e bloco de parametros
     # ------------------------------------------------------------------
     def declaracao(self, tree):
+        """Valida um bloco INVESTIMENTO ... FIM completo e registra o simbolo na tabela."""
         identificador = _texto(tree.children[0])
         linha, coluna = _posicao(tree)
         if not identificador.strip():
@@ -217,6 +219,7 @@ class AnalisadorSemantico(Interpreter):
             self._vistos_atual.add(grupo)
 
     def valor_inicial(self, tree):
+        """Valida e atribui o capital inicial (VALOR_INICIAL) do investimento."""
         self._registrar_parametro("valor_inicial", tree)
         simbolo = self._simbolo_atual
         linha, coluna = _posicao(tree)
@@ -233,6 +236,7 @@ class AnalisadorSemantico(Interpreter):
         simbolo.valor_inicial = valor
 
     def aporte(self, tree):
+        """Valida e atribui o aporte mensal recorrente (APORTE) e o prazo total."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "aporte",
@@ -271,6 +275,7 @@ class AnalisadorSemantico(Interpreter):
         simbolo.periodo = _converter_periodo_para_meses(prazo, unidade)
 
     def aporte_extra(self, tree):
+        """Valida e agenda um aporte esporadico (APORTE_EXTRA) em um mes especifico."""
         simbolo = self._simbolo_atual
         linha, coluna = _posicao(tree)
         valor = float(tree.children[0])
@@ -288,6 +293,7 @@ class AnalisadorSemantico(Interpreter):
         self._eventos_pendentes.append(("APORTE_EXTRA", mes, valor, linha, coluna))
 
     def resgate(self, tree):
+        """Valida e agenda um resgate parcial (RESGATE) em um mes especifico."""
         simbolo = self._simbolo_atual
         linha, coluna = _posicao(tree)
         valor = float(tree.children[0])
@@ -305,6 +311,7 @@ class AnalisadorSemantico(Interpreter):
         self._eventos_pendentes.append(("RESGATE", mes, valor, linha, coluna))
 
     def periodo(self, tree):
+        """Valida e converte o horizonte temporal (PERIODO) para meses."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "periodo",
@@ -332,6 +339,7 @@ class AnalisadorSemantico(Interpreter):
         simbolo.periodo = _converter_periodo_para_meses(prazo, unidade)
 
     def taxa(self, tree):
+        """Valida e converte a taxa de juros prefixada (AO_MES ou AO_ANO) para base mensal."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "taxa",
@@ -358,6 +366,7 @@ class AnalisadorSemantico(Interpreter):
         simbolo.taxa = _converter_taxa_para_mensal(valor, unidade)
 
     def taxa_indexada(self, tree):
+        """Calcula a taxa mensal pos-fixada como percentual de um indexador declarado."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "taxa_indexada",
@@ -389,6 +398,7 @@ class AnalisadorSemantico(Interpreter):
         simbolo.taxa = (percentual / 100.0) * taxa_indice
 
     def _aplicar_taxa_hibrida(self, tree, token_indice, token_valor, token_unidade):
+        """Compoe a taxa hibrida mensal combinando indexador e cupom prefixado."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "taxa_hibrida",
@@ -421,16 +431,19 @@ class AnalisadorSemantico(Interpreter):
         simbolo.taxa = (1.0 + taxa_indice) * (1.0 + taxa_fixa) - 1.0
 
     def taxa_hibrida_indice_primeiro(self, tree):
+        """Trata a regra sintatica TAXA "INDICE" + <numero> PORCENTO <unidade>."""
         self._aplicar_taxa_hibrida(
             tree, tree.children[0], tree.children[1], tree.children[2]
         )
 
     def taxa_hibrida_fixa_primeiro(self, tree):
+        """Trata a regra sintatica TAXA <numero> PORCENTO <unidade> + "INDICE"."""
         self._aplicar_taxa_hibrida(
             tree, tree.children[2], tree.children[0], tree.children[1]
         )
 
     def taxa_administracao(self, tree):
+        """Valida e converte a taxa de administracao/custodia para base mensal."""
         self._registrar_parametro("taxa_administracao", tree)
         simbolo = self._simbolo_atual
         linha, coluna = _posicao(tree)
@@ -448,6 +461,7 @@ class AnalisadorSemantico(Interpreter):
         simbolo.taxa_administracao = _converter_taxa_para_mensal(valor, unidade)
 
     def inflacao(self, tree):
+        """Valida e converte a taxa de inflacao explicita para base mensal."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "inflacao",
@@ -474,6 +488,7 @@ class AnalisadorSemantico(Interpreter):
         simbolo.inflacao = _converter_taxa_para_mensal(valor, unidade)
 
     def inflacao_indice(self, tree):
+        """Vincula a inflacao do investimento a um indexador macroeconomico declarado."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "inflacao_indice",
@@ -493,6 +508,7 @@ class AnalisadorSemantico(Interpreter):
         )
 
     def imposto(self, tree):
+        """Valida e atribui uma aliquota fixa de Imposto de Renda (0% a 100%)."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "imposto",
@@ -519,6 +535,7 @@ class AnalisadorSemantico(Interpreter):
         simbolo.imposto = valor / 100.0
 
     def imposto_regressivo(self, tree):
+        """Ativa a tabela regressiva brasileira de IR para o prazo total do investimento."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "imposto_regressivo",
@@ -533,6 +550,7 @@ class AnalisadorSemantico(Interpreter):
         self._simbolo_atual.imposto_regressivo = True
 
     def imposto_regressivo_safra(self, tree):
+        """Ativa a tabela regressiva de IR apurada individualmente por safra de aporte."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "imposto_regressivo_safra",
@@ -548,6 +566,7 @@ class AnalisadorSemantico(Interpreter):
         self._simbolo_atual.imposto_por_safra = True
 
     def imposto_come_cotas(self, tree):
+        """Ativa o regime tributario semestral de come-cotas para fundos."""
         identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "imposto_come_cotas",
@@ -586,26 +605,33 @@ class AnalisadorSemantico(Interpreter):
             vistos.add(identificador)
 
     def imprimir_resumo(self, tree):
+        """Valida a referencia de investimento no comando IMPRIMIR RESUMO."""
         token = tree.children[0]
         linha, coluna = _posicao(token)
         self.tabela.buscar(_texto(token), linha=linha, coluna=coluna)
 
     def gerar_grafico(self, tree):
+        """Valida os investimentos referenciados no comando GERAR GRAFICO."""
         self._validar_identificadores_comando(tree, "GERAR GRAFICO")
 
     def gerar_grafico_interativo(self, tree):
+        """Valida os investimentos referenciados no comando GERAR GRAFICO_INTERATIVO."""
         self._validar_identificadores_comando(tree, "GERAR GRAFICO_INTERATIVO")
 
     def comparar_grafico(self, tree):
+        """Valida os investimentos referenciados no comando COMPARAR GRAFICO."""
         self._validar_identificadores_comando(tree, "COMPARAR GRAFICO")
 
     def exportar_csv(self, tree):
+        """Valida os investimentos referenciados no comando EXPORTAR CSV."""
         self._validar_identificadores_comando(tree, "EXPORTAR CSV")
 
     def exportar_json(self, tree):
+        """Valida os investimentos referenciados no comando EXPORTAR JSON."""
         self._validar_identificadores_comando(tree, "EXPORTAR JSON")
 
     def gerar_relatorio(self, tree):
+        """Valida o arquivo de destino e os investimentos do comando GERAR RELATORIO."""
         linha, coluna = _posicao(tree)
         nome_arquivo = _texto(tree.children[0])
         if not nome_arquivo.strip():
@@ -630,6 +656,7 @@ class AnalisadorSemantico(Interpreter):
             )
 
     def simular_renda(self, tree):
+        """Valida o investimento base e o valor da retirada no comando SIMULAR RENDA."""
         token_id = tree.children[0]
         identificador = _texto(token_id)
         linha_id, col_id = _posicao(token_id)

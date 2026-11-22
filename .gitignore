@@ -1,3 +1,10 @@
+# ============================================================================
+# Regras de Exclusao de Versionamento Git (.gitignore)
+#
+# Define artefatos de build, caches do Python, ambientes virtuais, graficos
+# gerados em runtime (output/) e rascunhos locais ignorados pelo Git.
+# ============================================================================
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -1,7 +1,15 @@
+# ============================================================================
+# Metadados e Configuracao de Empacotamento do Projeto (pyproject.toml)
+#
+# Define as especificacoes de build (PEP 517/518), metadados do pacote Python
+# (PEP 621), dependencias, script executavel de console e opcoes de testes.
+# ============================================================================
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+# Metadados principais do pacote e dependencias de runtime (PEP 621)
 [project]
 name = "dsl-financeira"
 version = "1.0.0"
@@ -18,9 +26,11 @@ dependencies = [
     "streamlit>=1.30.0",
 ]
 
+# Entry point de linha de comando instalado no ambiente Python
 [project.scripts]
 dsl-financeira = "dsl_financeira.cli:run"
 
+# Descoberta automatica do pacote e inclusao do arquivo de gramatica (.lark)
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["dsl_financeira*"]
@@ -28,6 +38,7 @@ include = ["dsl_financeira*"]
 [tool.setuptools.package-data]
 dsl_financeira = ["*.lark"]
 
+# Configuracao para descoberta automatica da suite de testes em portugues
 [tool.pytest.ini_options]
 testpaths = ["testes"]
 python_files = ["teste_*.py", "test_*.py"]
