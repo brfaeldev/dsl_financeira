@@ -41,3 +41,8 @@ def criar_parser(parser="lalr"):
 def analisar(codigo, parser="lalr"):
     """Executa a analise lexica e sintatica, retornando a AST."""
     return criar_parser(parser).parse(codigo)
+
+
+def extrair_texto_string(token):
+    """Remove as aspas externas de um token literal STRING (ex.: '"CDB"' -> 'CDB')."""
+    return str(token)[1:-1]

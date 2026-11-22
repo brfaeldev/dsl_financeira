@@ -13,6 +13,7 @@ dsl_financeira/
 ├── pyproject.toml                   # Metadados do pacote, dependencias e entry points (PEP 621)
 ├── requirements.txt                 # Dependencias para instalacao rapida via pip
 ├── main.py                          # Entry point conveniente na raiz
+├── app.py                           # Playground Web e Mini-IDE em Streamlit
 ├── README.md                        # Documentacao principal do repositorio
 ├── dsl_financeira/                  # Pacote principal do interpretador
 │   ├── __init__.py                  # API publica do pacote (executar, analisar, classes)
@@ -22,7 +23,10 @@ dsl_financeira/
 │   ├── parser.py                    # Front-End: Lexer e Parser LALR(1) / Earley
 │   ├── semantico.py                 # AST Visitor de Analise Semantica
 │   ├── tabela_simbolos.py           # Tabela de Simbolos (investimentos, indices e regras de IR)
-│   ├── interpretador.py             # AST Visitor de Execucao (calculos, graficos PNG/HTML, CSV/JSON)
+│   ├── interpretador.py             # AST Visitor de Execucao (orquestrador dos comandos da AST)
+│   ├── motor.py                     # Motor matematico, financeiro e tributario (safras, IR, usufruto)
+│   ├── graficos.py                  # Renderizacao grafica estatica (PNG) e interativa (HTML Plotly)
+│   ├── exportacao.py                # Exportadores CSV/JSON, relatorios Markdown e formatacao
 │   └── erros.py                     # Hierarquia de excecoes semanticas customizadas
 ├── exemplos/                        # Scripts de demonstracao na linguagem .dsl
 │   ├── aposentadoria.dsl            # Cenario base do artigo IEEE

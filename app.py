@@ -4,16 +4,13 @@ Playground Web e Mini-IDE da DSL Financeira em Streamlit (app.py)
 Como executar:
     streamlit run app.py
 
-Oferece:
-1. Editor interativo de codigo .dsl com carregamento dos exemplos do projeto;
-2. Assistente Visual na barra lateral que gera blocos INDICE e INVESTIMENTO na sintaxe da DSL;
-3. Dashboard Financeiro com cards de metricas, tabela comparativa, graficos e downloads (CSV/JSON/MD);
-4. Simulador interativo de Renda Passiva (fase de usufruto/aposentadoria);
-5. Raio-X do Compilador: inspecao dos Tokens Lexicos, Arvore Sintatica Abstrata (AST) e Tabela de Simbolos.
+Arquitetura componentizada:
+1. Funcoes puras de geracao de codigo DSL e execucao em memoria (testaveis sem servidor);
+2. Componentes visuais modulares (_renderizar_sidebar, _renderizar_editor e uma funcao por aba);
+3. Orquestrador principal enxuto (`renderizar_app`).
 """
 
 import contextlib
-import csv
 import io
 import json
 import os
@@ -29,14 +26,15 @@ from dsl_financeira import (
     criar_parser,
 )
 from dsl_financeira.erros import ErroSemantico
-from dsl_financeira.interpretador import _carregar_pyplot, _moeda
+from dsl_financeira.exportacao import escrever_csv_registros, formatar_moeda as _moeda
+from dsl_financeira.graficos import carregar_pyplot as _carregar_pyplot
 
 _DIRETORIO_RAIZ = os.path.dirname(os.path.abspath(__file__))
 _DIRETORIO_EXEMPLOS = os.path.join(_DIRETORIO_RAIZ, "exemplos")
 
 
 # ----------------------------------------------------------------------
-# Funcoes puras do Playground (testaveis sem iniciar servidor Streamlit)
+# 1. Funcoes Puras de Dominio e Geracao de Codigo DSL (Testaveis)
 # ----------------------------------------------------------------------
 def listar_exemplos_disponiveis():
     """Retorna um dicionario {nome_arquivo: caminho_absoluto} dos scripts .dsl em exemplos/."""
@@ -96,9 +94,7 @@ def gerar_bloco_investimento_dsl(
             f'    TAXA "{indice_taxa.strip()}" + {float(taxa_valor):.2f} PORCENTO {unidade_taxa}'
         )
     else:
-        linhas.append(
-            f"    TAXA {float(taxa_valor):.2f} PORCENTO {unidade_taxa}"
-        )
+        linhas.append(f"    TAXA {float(taxa_valor):.2f} PORCENTO {unidade_taxa}")
 
     if taxa_administracao > 0:
         linhas.append(
@@ -127,20 +123,7 @@ def gerar_bloco_investimento_dsl(
 
 
 def compilar_e_simular_dsl(codigo):
-    """Executa o pipeline completo da DSL em memoria para o Playground Web.
-
-    Retorna um dicionario com:
-        - sucesso (bool)
-        - tipo_erro (None | 'Semantico' | 'Sintaxe' | 'Execucao')
-        - mensagem_erro (str | None)
-        - linha_erro (int | None)
-        - coluna_erro (int | None)
-        - tokens (list[dict])
-        - ast_pretty (str)
-        - tabela (TabelaSimbolos | None)
-        - resultados (list[tuple[Investimento, Resultado, list[dict]]])
-        - console_output (str)
-    """
+    """Executa o pipeline completo da DSL em memoria para o Playground Web."""
     resposta = {
         "sucesso": False,
         "tipo_erro": None,
@@ -208,39 +191,21 @@ def compilar_e_simular_dsl(codigo):
 
 
 # ----------------------------------------------------------------------
-# Interface Grafica Streamlit
+# 2. Componentes Visuais do Streamlit
 # ----------------------------------------------------------------------
-def renderizar_app():
-    import streamlit as st
-
-    st.set_page_config(
-        page_title="DSL Financeira — Playground & Compilador",
-        page_icon="📈",
-        layout="wide",
-    )
-
-    exemplos = listar_exemplos_disponiveis()
-    padrao_inicial = ""
-    if "comparacao_cenarios.dsl" in exemplos:
-        with open(exemplos["comparacao_cenarios.dsl"], "r", encoding="utf-8") as f:
-            padrao_inicial = f.read()
-
-    if "codigo_dsl" not in st.session_state:
-        st.session_state["codigo_dsl"] = padrao_inicial
-
-    # ------------------------------------------------------------------
-    # Barra Lateral: Exemplos e Construtor Visual de Codigo DSL
-    # ------------------------------------------------------------------
+def _renderizar_sidebar(st, exemplos):
+    """Renderiza a barra lateral com seletor de exemplos e assistente gerador de DSL."""
     with st.sidebar:
         st.title("⚙️ Ferramentas da DSL")
 
         st.subheader("1. Scripts de Exemplo")
         if exemplos:
+            opcoes = list(exemplos.keys())
             nome_exemplo = st.selectbox(
                 "Escolha um exemplo da pasta exemplos/:",
-                options=list(exemplos.keys()),
+                options=opcoes,
                 index=(
-                    list(exemplos.keys()).index("comparacao_cenarios.dsl")
+                    opcoes.index("comparacao_cenarios.dsl")
                     if "comparacao_cenarios.dsl" in exemplos
                     else 0
                 ),
@@ -418,15 +383,9 @@ def renderizar_app():
                 )
                 st.rerun()
 
-    # ------------------------------------------------------------------
-    # Cabecalho Principal e Editor da DSL
-    # ------------------------------------------------------------------
-    st.title("📈 DSL Financeira — Playground & Inspetor do Compilador")
-    st.caption(
-        "Linguagem de Domínio Específico declarativa para modelagem e simulação financeira de investimentos "
-        "(Front-End Lark LALR(1) + AST Visitor + Tabela de Símbolos)."
-    )
 
+def _renderizar_editor(st):
+    """Renderiza o editor de codigo .dsl e botoes de acao, retornando o codigo atual."""
     with st.expander("📝 Editor de Código (.dsl)", expanded=True):
         codigo_atual = st.text_area(
             "Escreva ou edite seu script .dsl abaixo:",
@@ -450,16 +409,319 @@ def renderizar_app():
                 mime="text/plain",
                 use_container_width=True,
             )
+    return codigo_atual
 
+
+def _renderizar_aba_dashboard(st, resultados):
+    """Renderiza a Aba 1: Cards de resumo, tabela comparativa, grafico e downloads."""
+    if not resultados:
+        st.warning(
+            "O script foi compilado com sucesso, mas não há blocos INVESTIMENTO declarados."
+        )
+        return
+
+    melhor_sim, melhor_res, _ = max(
+        resultados, key=lambda item: item[1].valor_final_liquido
+    )
+    st.success(
+        f"🏆 **Melhor Cenário Líquido**: `{melhor_sim.identificador}` com patrimônio líquido final de "
+        f"**{_moeda(melhor_res.valor_final_liquido)}** "
+        f"(Poder de Compra Real: **{_moeda(melhor_res.valor_final_liquido_real)}**)."
+    )
+
+    for simbolo, res, _ in resultados:
+        st.markdown(f"#### 📌 Cenário: `{simbolo.identificador}`")
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Total Investido", _moeda(res.total_investido))
+        c2.metric("Rendimento Bruto", _moeda(res.rendimento_bruto))
+        c3.metric(
+            "Imposto de Renda",
+            _moeda(res.imposto_renda),
+            delta=f"-{simbolo.imposto * 100:.1f}% base",
+            delta_color="inverse",
+        )
+        c4.metric("Valor Final Líquido", _moeda(res.valor_final_liquido))
+        c5.metric(
+            "Valor Líquido Real",
+            _moeda(res.valor_final_liquido_real),
+            help="Patrimônio líquido deflacionado pelo índice de inflação acumulado.",
+        )
+
+    st.divider()
+    st.subheader("📋 Tabela Comparativa Consolidada")
+    tabela_comparativa = [
+        {
+            "Cenário": simbolo.identificador,
+            "Prazo (Meses)": simbolo.periodo,
+            "Taxa Mensal Efetiva": f"{simbolo.taxa * 100:.4f}%",
+            "Inflação Mensal": f"{simbolo.inflacao * 100:.4f}%",
+            "Total Investido": _moeda(res.total_investido),
+            "Rendimento Bruto": _moeda(res.rendimento_bruto),
+            "Imposto de Renda": _moeda(res.imposto_renda),
+            "Total Resgatado": _moeda(res.total_resgatado),
+            "Valor Final Líquido": _moeda(res.valor_final_liquido),
+            "Valor Líquido Real": _moeda(res.valor_final_liquido_real),
+        }
+        for simbolo, res, _ in resultados
+    ]
+    st.dataframe(tabela_comparativa, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("📈 Curvas de Crescimento Patrimonial")
+    plt = _carregar_pyplot()
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for simbolo, _, serie in resultados:
+        meses = [r["mes"] for r in serie]
+        liq = [r["patrimonio_liquido"] for r in serie]
+        bruto = [r["patrimonio_bruto"] for r in serie]
+        linha = ax.plot(
+            meses,
+            liq,
+            linewidth=2.2,
+            label=f"{simbolo.identificador} (Líquido)",
+        )
+        cor = linha[0].get_color()
+        ax.plot(
+            meses,
+            bruto,
+            linestyle="--",
+            alpha=0.55,
+            color=cor,
+            label=f"{simbolo.identificador} (Bruto)",
+        )
+        if simbolo.inflacao > 0:
+            real = [r["patrimonio_liquido_real"] for r in serie]
+            ax.plot(
+                meses,
+                real,
+                linestyle=":",
+                alpha=0.9,
+                color=cor,
+                label=f"{simbolo.identificador} (Líquido Real)",
+            )
+    ax.set_title("Evolução Patrimonial Mês a Mês")
+    ax.set_xlabel("Meses")
+    ax.set_ylabel("Valor (R$)")
+    ax.grid(True, alpha=0.35)
+    ax.legend()
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+    st.subheader("📑 Série Temporal Mês a Mês e Exportação")
+    nomes_inv = [s.identificador for s, _, _ in resultados]
+    inv_selecionado = st.selectbox(
+        "Selecione um investimento para inspecionar a evolução mensal (0..n):",
+        options=nomes_inv,
+    )
+    _, res_sel, serie_sel = next(
+        item for item in resultados if item[0].identificador == inv_selecionado
+    )
+    st.dataframe(serie_sel, use_container_width=True, hide_index=True)
+
+    buf_csv = io.StringIO()
+    escrever_csv_registros(serie_sel, buf_csv, campos=list(serie_sel[0].keys()))
+
+    payload_json = {
+        "cenario": inv_selecionado,
+        "resumo": {
+            "total_investido": round(res_sel.total_investido, 2),
+            "rendimento_bruto": round(res_sel.rendimento_bruto, 2),
+            "imposto_renda": round(res_sel.imposto_renda, 2),
+            "valor_final_liquido": round(res_sel.valor_final_liquido, 2),
+            "valor_final_liquido_real": round(res_sel.valor_final_liquido_real, 2),
+        },
+        "evolucao_mensal": serie_sel,
+    }
+
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        st.download_button(
+            f"⬇️ Baixar Evolução Mensal de '{inv_selecionado}' (.csv)",
+            data=buf_csv.getvalue().encode("utf-8"),
+            file_name=f"evolucao_{inv_selecionado}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with col_dl2:
+        st.download_button(
+            f"⬇️ Baixar Dados Completos de '{inv_selecionado}' (.json)",
+            data=json.dumps(payload_json, indent=2, ensure_ascii=False).encode("utf-8"),
+            file_name=f"evolucao_{inv_selecionado}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+
+def _renderizar_aba_renda(st, resultados):
+    """Renderiza a Aba 2: Simulador interativo de Renda Passiva (Usufruto)."""
+    if not resultados:
+        st.info("Declare ao menos um investimento para simular a fase de usufruto.")
+        return
+
+    st.markdown(
+        "Simule por quantos meses e anos o patrimônio líquido acumulado sustenta "
+        "uma retirada mensal na aposentadoria (equivalente ao comando `SIMULAR RENDA`)."
+    )
+    nomes_inv = [s.identificador for s, _, _ in resultados]
+    cenario_renda = st.selectbox(
+        "Investimento base para aposentadoria:",
+        options=nomes_inv,
+        key="sel_renda",
+    )
+    sim_r, _, _ = next(
+        item for item in resultados if item[0].identificador == cenario_renda
+    )
+
+    info_inicial = Interpretador.calcular_simulacao_renda(sim_r, 100.0)
+    patrimonio_base = info_inicial["patrimonio_base"]
+    renda_perpetua = info_inicial["renda_perpetua_maxima"]
+
+    retirada_escolhida = st.number_input(
+        "Retirada Mensal Desejada (R$):",
+        min_value=10.0,
+        value=float(max(100.0, round(renda_perpetua * 1.5, 2))),
+        step=100.0,
+    )
+
+    dados_usufruto = Interpretador.calcular_simulacao_renda(sim_r, retirada_escolhida)
+
+    cr1, cr2, cr3 = st.columns(3)
+    cr1.metric("Patrimônio Base Acumulado", _moeda(patrimonio_base))
+    cr2.metric(
+        "Renda Perpétua Máxima",
+        _moeda(renda_perpetua),
+        help="Valor máximo que você pode retirar todo mês sem nunca consumir o patrimônio principal.",
+    )
+
+    if dados_usufruto["perpetua"]:
+        cr3.metric("Duração Estimada", "Perpétua ( Vitalícia )")
+        st.success(
+            f"Com retirada de **{_moeda(retirada_escolhida)}/mês** (abaixo ou igual à renda perpétua de "
+            f"**{_moeda(renda_perpetua)}/mês**), o patrimônio **nunca se esgota**!"
+        )
+    else:
+        meses_u = dados_usufruto["meses_duracao"]
+        anos_u = meses_u // 12
+        resto_m = meses_u % 12
+        cr3.metric(
+            "Duração Estimada",
+            f"{meses_u} meses ({anos_u}a {resto_m}m)",
+        )
+        st.line_chart(dados_usufruto["curva_usufruto"])
+
+
+def _renderizar_aba_compilador(st, tabela, resultado_exec):
+    """Renderiza a Aba 3: Raio-X do Compilador (Tabela de Simbolos, AST e Tokens)."""
+    st.markdown(
+        "Esta visão expõe as estruturas internas construídas pelas três fases do interpretador: "
+        "**1. Análise Léxica (Tokens)** → **2. Análise Sintática (AST Lark)** → **3. Análise Semântica (Tabela de Símbolos)**."
+    )
+
+    st.subheader("1. Tabela de Símbolos (`TabelaSimbolos`)")
+    indices_decl = tabela.listar_indices()
+    if indices_decl:
+        st.markdown("**Indexadores Macroeconômicos Globais (`_indices`):**")
+        st.dataframe(
+            [
+                {
+                    "Identificador": k,
+                    "Taxa Mensal Equivalente (decimal)": f"{v:.8f}",
+                    "Taxa Mensal (%)": f"{v * 100:.4f}%",
+                    "Taxa Anual Equivalente (%)": f"{((1 + v) ** 12 - 1) * 100:.2f}%",
+                }
+                for k, v in indices_decl.items()
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    st.markdown("**Entidades de Investimento (`_simbolos`):**")
+    linhas_simbolos = [
+        {
+            "identificador": s.identificador,
+            "valor_inicial (P)": s.valor_inicial,
+            "aporte (PMT)": s.aporte,
+            "periodo (n meses)": s.periodo,
+            "taxa mensal (r)": round(s.taxa, 8),
+            "inflacao mensal (i)": round(s.inflacao, 8),
+            "taxa_adm mensal": round(s.taxa_administracao, 8),
+            "imposto base (t)": s.imposto,
+            "regressivo": s.imposto_regressivo,
+            "por_safra": s.imposto_por_safra,
+            "come_cotas": s.imposto_come_cotas,
+            "aportes_extras": str(s.aportes_extras),
+            "resgates": str(s.resgates),
+        }
+        for s in tabela.listar()
+    ]
+    st.dataframe(linhas_simbolos, use_container_width=True, hide_index=True)
+
+    col_ast, col_tok = st.columns(2)
+    with col_ast:
+        st.subheader("2. Árvore Sintática Abstrata (AST)")
+        st.code(resultado_exec["ast_pretty"], language="text")
+    with col_tok:
+        st.subheader(
+            f"3. Fluxo de Tokens Léxicos ({len(resultado_exec['tokens'])} tokens)"
+        )
+        st.dataframe(
+            resultado_exec["tokens"],
+            use_container_width=True,
+            hide_index=True,
+            height=380,
+        )
+
+
+def _renderizar_aba_console(st, resultado_exec):
+    """Renderiza a Aba 4: Saida padrao do console e especificacao EBNF da gramatica."""
+    st.subheader("Saída Padrão do Interpretador (`stdout`)")
+    st.code(
+        resultado_exec["console_output"]
+        or "(Nenhuma saída de terminal gerada pelos comandos do script)",
+        language="text",
+    )
+    st.subheader("Gramática Formal EBNF (`dsl_financeira/gramatica.lark`)")
+    caminho_gram = os.path.join(_DIRETORIO_RAIZ, "dsl_financeira", "gramatica.lark")
+    if os.path.exists(caminho_gram):
+        with open(caminho_gram, "r", encoding="utf-8") as fg:
+            st.code(fg.read(), language="text")
+
+
+# ----------------------------------------------------------------------
+# 3. Orquestrador Principal da Aplicacao Streamlit
+# ----------------------------------------------------------------------
+def renderizar_app():
+    import streamlit as st
+
+    st.set_page_config(
+        page_title="DSL Financeira — Playground & Compilador",
+        page_icon="📈",
+        layout="wide",
+    )
+
+    exemplos = listar_exemplos_disponiveis()
+    if "codigo_dsl" not in st.session_state:
+        padrao_inicial = ""
+        if "comparacao_cenarios.dsl" in exemplos:
+            with open(exemplos["comparacao_cenarios.dsl"], "r", encoding="utf-8") as f:
+                padrao_inicial = f.read()
+        st.session_state["codigo_dsl"] = padrao_inicial
+
+    _renderizar_sidebar(st, exemplos)
+
+    st.title("📈 DSL Financeira — Playground & Inspetor do Compilador")
+    st.caption(
+        "Linguagem de Domínio Específico declarativa para modelagem e simulação financeira de investimentos "
+        "(Front-End Lark LALR(1) + AST Visitor + Tabela de Símbolos)."
+    )
+
+    codigo_atual = _renderizar_editor(st)
     if not codigo_atual.strip():
         st.info("Digite ou carregue um script `.dsl` na barra lateral para iniciar.")
         return
 
     resultado_exec = compilar_e_simular_dsl(codigo_atual)
-
-    # ------------------------------------------------------------------
-    # Exibicao de Erros Lexicos, Sintaticos ou Semanticos
-    # ------------------------------------------------------------------
     if not resultado_exec["sucesso"]:
         tipo = resultado_exec["tipo_erro"]
         msg = resultado_exec["mensagem_erro"]
@@ -475,12 +737,6 @@ def renderizar_app():
                 )
         return
 
-    resultados = resultado_exec["resultados"]
-    tabela = resultado_exec["tabela"]
-
-    # ------------------------------------------------------------------
-    # Abas de Resultados e Inspecao do Compilador
-    # ------------------------------------------------------------------
     aba_dash, aba_renda, aba_compilador, aba_console = st.tabs(
         [
             "📊 1. Dashboard & Gráficos",
@@ -490,305 +746,14 @@ def renderizar_app():
         ]
     )
 
-    # ==================================================================
-    # ABA 1: Dashboard Financeiro & Graficos
-    # ==================================================================
     with aba_dash:
-        if not resultados:
-            st.warning(
-                "O script foi compilado com sucesso, mas não há blocos INVESTIMENTO declarados."
-            )
-        else:
-            melhor_sim, melhor_res, _ = max(
-                resultados, key=lambda item: item[1].valor_final_liquido
-            )
-            st.success(
-                f"🏆 **Melhor Cenário Líquido**: `{melhor_sim.identificador}` com patrimônio líquido final de "
-                f"**{_moeda(melhor_res.valor_final_liquido)}** "
-                f"(Poder de Compra Real: **{_moeda(melhor_res.valor_final_liquido_real)}**)."
-            )
-
-            # Cards de resumo para cada investimento
-            for simbolo, res, _ in resultados:
-                st.markdown(f"#### 📌 Cenário: `{simbolo.identificador}`")
-                c1, c2, c3, c4, c5 = st.columns(5)
-                c1.metric("Total Investido", _moeda(res.total_investido))
-                c2.metric("Rendimento Bruto", _moeda(res.rendimento_bruto))
-                c3.metric(
-                    "Imposto de Renda",
-                    _moeda(res.imposto_renda),
-                    delta=f"-{simbolo.imposto * 100:.1f}% base",
-                    delta_color="inverse",
-                )
-                c4.metric("Valor Final Líquido", _moeda(res.valor_final_liquido))
-                c5.metric(
-                    "Valor Líquido Real",
-                    _moeda(res.valor_final_liquido_real),
-                    help="Patrimônio líquido deflacionado pelo índice de inflação acumulado.",
-                )
-
-            st.divider()
-            st.subheader("📋 Tabela Comparativa Consolidada")
-            tabela_comparativa = []
-            for simbolo, res, _ in resultados:
-                tabela_comparativa.append(
-                    {
-                        "Cenário": simbolo.identificador,
-                        "Prazo (Meses)": simbolo.periodo,
-                        "Taxa Mensal Efetiva": f"{simbolo.taxa * 100:.4f}%",
-                        "Inflação Mensal": f"{simbolo.inflacao * 100:.4f}%",
-                        "Total Investido": _moeda(res.total_investido),
-                        "Rendimento Bruto": _moeda(res.rendimento_bruto),
-                        "Imposto de Renda": _moeda(res.imposto_renda),
-                        "Total Resgatado": _moeda(res.total_resgatado),
-                        "Valor Final Líquido": _moeda(res.valor_final_liquido),
-                        "Valor Líquido Real": _moeda(res.valor_final_liquido_real),
-                    }
-                )
-            st.dataframe(tabela_comparativa, use_container_width=True, hide_index=True)
-
-            st.divider()
-            st.subheader("📈 Curvas de Crescimento Patrimonial")
-            plt = _carregar_pyplot()
-            fig, ax = plt.subplots(figsize=(10, 5))
-            for simbolo, _, serie in resultados:
-                meses = [r["mes"] for r in serie]
-                liq = [r["patrimonio_liquido"] for r in serie]
-                bruto = [r["patrimonio_bruto"] for r in serie]
-                linha = ax.plot(
-                    meses,
-                    liq,
-                    linewidth=2.2,
-                    label=f"{simbolo.identificador} (Líquido)",
-                )
-                cor = linha[0].get_color()
-                ax.plot(
-                    meses,
-                    bruto,
-                    linestyle="--",
-                    alpha=0.55,
-                    color=cor,
-                    label=f"{simbolo.identificador} (Bruto)",
-                )
-                if simbolo.inflacao > 0:
-                    real = [r["patrimonio_liquido_real"] for r in serie]
-                    ax.plot(
-                        meses,
-                        real,
-                        linestyle=":",
-                        alpha=0.9,
-                        color=cor,
-                        label=f"{simbolo.identificador} (Líquido Real)",
-                    )
-            ax.set_title("Evolução Patrimonial Mês a Mês")
-            ax.set_xlabel("Meses")
-            ax.set_ylabel("Valor (R$)")
-            ax.grid(True, alpha=0.35)
-            ax.legend()
-            fig.tight_layout()
-            st.pyplot(fig)
-            plt.close(fig)
-
-            # Inspecao da tabela mensal + Exportacao CSV/JSON
-            st.subheader("📑 Série Temporal Mês a Mês e Exportação")
-            nomes_inv = [s.identificador for s, _, _ in resultados]
-            inv_selecionado = st.selectbox(
-                "Selecione um investimento para inspecionar a evolução mensal (0..n):",
-                options=nomes_inv,
-            )
-            _, res_sel, serie_sel = next(
-                item for item in resultados if item[0].identificador == inv_selecionado
-            )
-            st.dataframe(serie_sel, use_container_width=True, hide_index=True)
-
-            # Prepara CSV e JSON para download direto
-            buf_csv = io.StringIO()
-            campos_csv = list(serie_sel[0].keys())
-            writer_csv = csv.writer(buf_csv, lineterminator="\n")
-            writer_csv.writerow(campos_csv)
-            for linha_s in serie_sel:
-                writer_csv.writerow(
-                    [
-                        linha_s[c]
-                        if c == "mes"
-                        else (f"{linha_s[c]:.4f}" if c == "aliquota_ir" else f"{linha_s[c]:.2f}")
-                        for c in campos_csv
-                    ]
-                )
-
-            payload_json = {
-                "cenario": inv_selecionado,
-                "resumo": {
-                    "total_investido": round(res_sel.total_investido, 2),
-                    "rendimento_bruto": round(res_sel.rendimento_bruto, 2),
-                    "imposto_renda": round(res_sel.imposto_renda, 2),
-                    "valor_final_liquido": round(res_sel.valor_final_liquido, 2),
-                    "valor_final_liquido_real": round(
-                        res_sel.valor_final_liquido_real, 2
-                    ),
-                },
-                "evolucao_mensal": serie_sel,
-            }
-
-            col_dl1, col_dl2 = st.columns(2)
-            with col_dl1:
-                st.download_button(
-                    f"⬇️ Baixar Evolução Mensal de '{inv_selecionado}' (.csv)",
-                    data=buf_csv.getvalue().encode("utf-8"),
-                    file_name=f"evolucao_{inv_selecionado}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                )
-            with col_dl2:
-                st.download_button(
-                    f"⬇️ Baixar Dados Completos de '{inv_selecionado}' (.json)",
-                    data=json.dumps(payload_json, indent=2, ensure_ascii=False).encode(
-                        "utf-8"
-                    ),
-                    file_name=f"evolucao_{inv_selecionado}.json",
-                    mime="application/json",
-                    use_container_width=True,
-                )
-
-    # ==================================================================
-    # ABA 2: Simulador Interativo de Renda Passiva (Usufruto)
-    # ==================================================================
+        _renderizar_aba_dashboard(st, resultado_exec["resultados"])
     with aba_renda:
-        if not resultados:
-            st.info("Declare ao menos um investimento para simular a fase de usufruto.")
-        else:
-            st.markdown(
-                "Simule por quantos meses e anos o patrimônio líquido acumulado sustenta "
-                "uma retirada mensal na aposentadoria (equivalente ao comando `SIMULAR RENDA`)."
-            )
-            nomes_inv = [s.identificador for s, _, _ in resultados]
-            cenario_renda = st.selectbox(
-                "Investimento base para aposentadoria:",
-                options=nomes_inv,
-                key="sel_renda",
-            )
-            sim_r, _, _ = next(
-                item for item in resultados if item[0].identificador == cenario_renda
-            )
-
-            info_inicial = Interpretador.calcular_simulacao_renda(sim_r, 100.0)
-            patrimonio_base = info_inicial["patrimonio_base"]
-            renda_perpetua = info_inicial["renda_perpetua_maxima"]
-
-            retirada_escolhida = st.number_input(
-                "Retirada Mensal Desejada (R$):",
-                min_value=10.0,
-                value=float(max(100.0, round(renda_perpetua * 1.5, 2))),
-                step=100.0,
-            )
-
-            dados_usufruto = Interpretador.calcular_simulacao_renda(
-                sim_r, retirada_escolhida
-            )
-
-            cr1, cr2, cr3 = st.columns(3)
-            cr1.metric("Patrimônio Base Acumulado", _moeda(patrimonio_base))
-            cr2.metric(
-                "Renda Perpétua Máxima",
-                _moeda(renda_perpetua),
-                help="Valor máximo que você pode retirar todo mês sem nunca consumir o patrimônio principal.",
-            )
-
-            if dados_usufruto["perpetua"]:
-                cr3.metric("Duração Estimada", "Perpétua ( Vitalícia )")
-                st.success(
-                    f"Com retirada de **{_moeda(retirada_escolhida)}/mês** (abaixo ou igual à renda perpétua de "
-                    f"**{_moeda(renda_perpetua)}/mês**), o patrimônio **nunca se esgota**!"
-                )
-            else:
-                meses_u = dados_usufruto["meses_duracao"]
-                anos_u = meses_u // 12
-                resto_m = meses_u % 12
-                cr3.metric(
-                    "Duração Estimada",
-                    f"{meses_u} meses ({anos_u}a {resto_m}m)",
-                )
-                st.line_chart(dados_usufruto["curva_usufruto"])
-
-    # ==================================================================
-    # ABA 3: Raio-X do Compilador (Tokens, AST e Tabela de Simbolos)
-    # ==================================================================
+        _renderizar_aba_renda(st, resultado_exec["resultados"])
     with aba_compilador:
-        st.markdown(
-            "Esta visão expõe as estruturas internas construídas pelas três fases do interpretador: "
-            "**1. Análise Léxica (Tokens)** → **2. Análise Sintática (AST Lark)** → **3. Análise Semântica (Tabela de Símbolos)**."
-        )
-
-        st.subheader("1. Tabela de Símbolos (`TabelaSimbolos`)")
-        indices_decl = tabela.listar_indices()
-        if indices_decl:
-            st.markdown("**Indexadores Macroeconômicos Globais (`_indices`):**")
-            st.dataframe(
-                [
-                    {
-                        "Identificador": k,
-                        "Taxa Mensal Equivalente (decimal)": f"{v:.8f}",
-                        "Taxa Mensal (%)": f"{v * 100:.4f}%",
-                        "Taxa Anual Equivalente (%)": f"{((1 + v) ** 12 - 1) * 100:.2f}%",
-                    }
-                    for k, v in indices_decl.items()
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        st.markdown("**Entidades de Investimento (`_simbolos`):**")
-        linhas_simbolos = []
-        for s in tabela.listar():
-            linhas_simbolos.append(
-                {
-                    "identificador": s.identificador,
-                    "valor_inicial (P)": s.valor_inicial,
-                    "aporte (PMT)": s.aporte,
-                    "periodo (n meses)": s.periodo,
-                    "taxa mensal (r)": round(s.taxa, 8),
-                    "inflacao mensal (i)": round(s.inflacao, 8),
-                    "taxa_adm mensal": round(s.taxa_administracao, 8),
-                    "imposto base (t)": s.imposto,
-                    "regressivo": s.imposto_regressivo,
-                    "por_safra": s.imposto_por_safra,
-                    "come_cotas": s.imposto_come_cotas,
-                    "aportes_extras": str(s.aportes_extras),
-                    "resgates": str(s.resgates),
-                }
-            )
-        st.dataframe(linhas_simbolos, use_container_width=True, hide_index=True)
-
-        col_ast, col_tok = st.columns(2)
-        with col_ast:
-            st.subheader("2. Árvore Sintática Abstrata (AST)")
-            st.code(resultado_exec["ast_pretty"], language="text")
-        with col_tok:
-            st.subheader(
-                f"3. Fluxo de Tokens Léxicos ({len(resultado_exec['tokens'])} tokens)"
-            )
-            st.dataframe(
-                resultado_exec["tokens"],
-                use_container_width=True,
-                hide_index=True,
-                height=380,
-            )
-
-    # ==================================================================
-    # ABA 4: Saida Textual do Console & Gramatica EBNF
-    # ==================================================================
+        _renderizar_aba_compilador(st, resultado_exec["tabela"], resultado_exec)
     with aba_console:
-        st.subheader("Saída Padrão do Interpretador (`stdout`)")
-        st.code(
-            resultado_exec["console_output"]
-            or "(Nenhuma saída de terminal gerada pelos comandos do script)",
-            language="text",
-        )
-        st.subheader("Gramática Formal EBNF (`dsl_financeira/gramatica.lark`)")
-        caminho_gram = os.path.join(_DIRETORIO_RAIZ, "dsl_financeira", "gramatica.lark")
-        if os.path.exists(caminho_gram):
-            with open(caminho_gram, "r", encoding="utf-8") as fg:
-                st.code(fg.read(), language="text")
+        _renderizar_aba_console(st, resultado_exec)
 
 
 if __name__ == "__main__":

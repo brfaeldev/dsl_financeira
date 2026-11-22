@@ -16,12 +16,9 @@ from .erros import (
     ParametroObrigatorioError,
     ValorForaDoDominioError,
 )
+from .motor import validar_viabilidade_resgates
+from .parser import extrair_texto_string as _texto
 from .tabela_simbolos import TabelaSimbolos, aliquota_regressiva_ir
-
-
-def _texto(token):
-    """Remove as aspas externas de um token literal STRING (ex.: '"CDB"' -> 'CDB')."""
-    return str(token)[1:-1]
 
 
 def _posicao(no):
@@ -180,7 +177,8 @@ class AnalisadorSemantico(Interpreter):
                 simbolo.imposto = aliquota_regressiva_ir(simbolo.periodo)
 
             # Verifica se algum resgate parcial excede o saldo disponivel no mes
-            self._validar_viabilidade_resgates(simbolo)
+            # (utilizando o motor real para contemplar inclusive descontos de come-cotas)
+            validar_viabilidade_resgates(simbolo, self._eventos_pendentes)
         except Exception:
             # Rollback: evita manter simbolo invalido/incompleto na Tabela de Simbolos
             self.tabela.remover(identificador)
@@ -190,35 +188,6 @@ class AnalisadorSemantico(Interpreter):
             self._simbolo_atual = None
             self._vistos_atual = set()
             self._eventos_pendentes = []
-
-    def _validar_viabilidade_resgates(self, simbolo):
-        """Verifica se os resgates parciais nao ultrapassam o saldo acumulado no respectivo mes."""
-        if not simbolo.resgates:
-            return
-        extras_por_mes = {}
-        for mes_e, val_e in simbolo.aportes_extras:
-            extras_por_mes[mes_e] = extras_por_mes.get(mes_e, 0.0) + val_e
-
-        resgates_info = {}
-        for tipo_ev, mes_ev, val_ev, linha_ev, col_ev in self._eventos_pendentes:
-            if tipo_ev == "RESGATE":
-                resgates_info.setdefault(mes_ev, []).append((val_ev, linha_ev, col_ev))
-
-        saldo = simbolo.valor_inicial
-        fator_mensal = (1.0 + simbolo.taxa) * (1.0 - simbolo.taxa_administracao)
-        for mes in range(1, simbolo.periodo + 1):
-            saldo = saldo * fator_mensal + simbolo.aporte + extras_por_mes.get(mes, 0.0)
-            for val_resgate, linha_ev, col_ev in resgates_info.get(mes, []):
-                if val_resgate > saldo + 1e-9:
-                    raise ValorForaDoDominioError(
-                        simbolo.identificador,
-                        "RESGATE",
-                        val_resgate,
-                        f"O resgate no mes {mes} excede o saldo disponivel ({saldo:.2f}).",
-                        linha=linha_ev,
-                        coluna=col_ev,
-                    )
-                saldo -= val_resgate
 
     def _registrar_parametro(
         self, nome, tree, grupo=None, rotulo_conflito=None, mensagem_conflito=None
