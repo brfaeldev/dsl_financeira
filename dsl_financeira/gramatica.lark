@@ -1,0 +1,41 @@
+// Gramatica formal da DSL Financeira (EBNF do artigo, traduzida para a sintaxe do Lark)
+//
+// programa          ::= (declaracao | comando)+
+// declaracao        ::= "INVESTIMENTO" STRING bloco_parametros "FIM"
+// bloco_parametros  ::= parametro+
+// parametro         ::= "VALOR_INICIAL" NUMBER
+//                     | "APORTE" NUMBER "POR" INT "MESES"
+//                     | "TAXA" NUMBER "PORCENTO" "AO_MES"
+//                     | "IMPOSTO" NUMBER "PORCENTO"
+// comando           ::= "IMPRIMIR" "RESUMO" STRING
+//                     | "GERAR" "GRAFICO" STRING
+
+programa: (declaracao | comando)+
+
+declaracao: "INVESTIMENTO" STRING bloco_parametros "FIM"
+
+bloco_parametros: parametro+
+
+?parametro: valor_inicial
+          | aporte
+          | taxa
+          | imposto
+
+valor_inicial: "VALOR_INICIAL" NUMBER
+aporte: "APORTE" NUMBER "POR" INT "MESES"
+taxa: "TAXA" NUMBER "PORCENTO" "AO_MES"
+imposto: "IMPOSTO" NUMBER "PORCENTO"
+
+?comando: imprimir_resumo
+        | gerar_grafico
+
+imprimir_resumo: "IMPRIMIR" "RESUMO" STRING
+gerar_grafico: "GERAR" "GRAFICO" STRING
+
+STRING: /"[^"]*"/
+NUMBER: /[0-9]+(\.[0-9]+)?/
+INT: /[0-9]+/
+
+%import common.WS
+%ignore WS
+%ignore /#[^\n]*/
