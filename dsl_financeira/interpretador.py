@@ -16,10 +16,20 @@ Modelo matematico aplicado:
 
 import os
 import re
+import sys
 
 from lark.visitors import Interpreter
 
 from .semantico import _texto
+
+
+def _carregar_pyplot():
+    """Importa matplotlib.pyplot garantindo o backend headless 'Agg'."""
+    if "matplotlib.pyplot" not in sys.modules:
+        import matplotlib
+        matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    return plt
 
 
 def _moeda(valor):
@@ -70,6 +80,10 @@ class Interpretador(Interpreter):
         super().__init__()
         self.tabela = tabela
         self.diretorio_saida = diretorio_saida
+        # Mapeia (nome_arquivo -> chave_origem) para evitar que identificadores
+        # distintos com a mesma forma sanitizada (ex.: "CDB 1" e "CDB/1")
+        # sobrescrevam silenciosamente o arquivo PNG um do outro.
+        self._arquivos_registrados = {}
 
     def executar(self, ast):
         """Percorre a AST executando os nos de comando via Visitor."""
@@ -129,6 +143,34 @@ class Interpretador(Interpreter):
     # ------------------------------------------------------------------
     # GERAR GRAFICO / COMPARAR GRAFICO
     # ------------------------------------------------------------------
+    def _resolver_caminho_saida(self, prefixo, sufixo_base, chave_origem):
+        """Resolve o caminho do arquivo PNG prevenindo colisao entre identificadores distintos."""
+        os.makedirs(self.diretorio_saida, exist_ok=True)
+        nome_arquivo = f"{prefixo}_{sufixo_base}.png"
+        contador = 2
+        while (
+            nome_arquivo in self._arquivos_registrados
+            and self._arquivos_registrados[nome_arquivo] != chave_origem
+        ):
+            nome_arquivo = f"{prefixo}_{sufixo_base}_{contador}.png"
+            contador += 1
+        self._arquivos_registrados[nome_arquivo] = chave_origem
+        return os.path.join(self.diretorio_saida, nome_arquivo)
+
+    @staticmethod
+    def _finalizar_e_salvar_figura(plt, fig, ax, titulo, caminho_arquivo):
+        """Aplica formatacao padrao aos eixos, salva a figura em disco e libera memoria."""
+        try:
+            ax.set_title(titulo)
+            ax.set_xlabel("Meses")
+            ax.set_ylabel("Valor (R$)")
+            ax.legend()
+            ax.grid(True)
+            fig.tight_layout()
+            fig.savefig(caminho_arquivo, dpi=150)
+        finally:
+            plt.close(fig)
+
     def gerar_grafico(self, tree):
         identificadores = [_texto(t) for t in tree.children]
         # Quando GERAR GRAFICO recebe multiplos identificadores, delega para a
@@ -137,44 +179,36 @@ class Interpretador(Interpreter):
             return self.comparar_grafico(tree)
 
         identificador = identificadores[0]
-        import matplotlib
-        # Backend 'Agg' permite renderizar arquivos PNG sem servidor grafico/GUI
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
         simbolo = self.tabela.buscar(identificador)
         meses, patrimonio_bruto, patrimonio_liquido, investido = (
             self._simular_evolucao(simbolo)
         )
 
-        plt.figure(figsize=(8, 5))
-        plt.plot(meses, patrimonio_bruto, label="Patrimonio acumulado (bruto)")
-        plt.plot(meses, patrimonio_liquido, label="Patrimonio acumulado (liquido)")
-        plt.plot(meses, investido, linestyle="--", label="Total investido")
-        plt.title(f"Curva de crescimento do patrimonio: {identificador}")
-        plt.xlabel("Meses")
-        plt.ylabel("Valor (R$)")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
+        plt = _carregar_pyplot()
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.plot(meses, patrimonio_bruto, label="Patrimonio acumulado (bruto)")
+        ax.plot(meses, patrimonio_liquido, label="Patrimonio acumulado (liquido)")
+        ax.plot(meses, investido, linestyle="--", label="Total investido")
 
-        os.makedirs(self.diretorio_saida, exist_ok=True)
         nome_seguro = _sanitizar_nome_arquivo(identificador)
-        nome_arquivo = f"grafico_{nome_seguro}.png"
-        arquivo = os.path.join(self.diretorio_saida, nome_arquivo)
-        plt.savefig(arquivo, dpi=150)
-        plt.close()
+        arquivo = self._resolver_caminho_saida(
+            "grafico", nome_seguro, chave_origem=("individual", identificador)
+        )
+        self._finalizar_e_salvar_figura(
+            plt,
+            fig,
+            ax,
+            f"Curva de crescimento do patrimonio: {identificador}",
+            arquivo,
+        )
         print(f"Grafico gerado em: {arquivo}")
         return arquivo
 
     def comparar_grafico(self, tree):
         identificadores = [_texto(t) for t in tree.children]
 
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-        plt.figure(figsize=(9, 5.5))
+        plt = _carregar_pyplot()
+        fig, ax = plt.subplots(figsize=(9, 5.5))
         for identificador in identificadores:
             simbolo = self.tabela.buscar(identificador)
             meses, patrimonio_bruto, patrimonio_liquido, _ = (
@@ -182,14 +216,14 @@ class Interpretador(Interpreter):
             )
             # Plota a curva liquida em linha continua e reutiliza a mesma cor
             # em linha tracejada para a curva bruta correspondente ao mesmo cenario.
-            linha = plt.plot(
+            linha = ax.plot(
                 meses,
                 patrimonio_liquido,
                 linewidth=2,
                 label=f"{identificador} (liquido)",
             )
             cor = linha[0].get_color()
-            plt.plot(
+            ax.plot(
                 meses,
                 patrimonio_bruto,
                 linestyle="--",
@@ -198,18 +232,18 @@ class Interpretador(Interpreter):
                 label=f"{identificador} (bruto)",
             )
 
-        plt.title("Analise comparativa de crescimento do patrimonio entre cenarios")
-        plt.xlabel("Meses")
-        plt.ylabel("Valor (R$)")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-
-        os.makedirs(self.diretorio_saida, exist_ok=True)
         nomes = "_vs_".join(_sanitizar_nome_arquivo(i) for i in identificadores)
-        nome_arquivo = f"grafico_comparativo_{nomes}.png"
-        arquivo = os.path.join(self.diretorio_saida, nome_arquivo)
-        plt.savefig(arquivo, dpi=150)
-        plt.close()
+        arquivo = self._resolver_caminho_saida(
+            "grafico_comparativo",
+            nomes,
+            chave_origem=("comparativo", tuple(identificadores)),
+        )
+        self._finalizar_e_salvar_figura(
+            plt,
+            fig,
+            ax,
+            "Analise comparativa de crescimento do patrimonio entre cenarios",
+            arquivo,
+        )
         print(f"Grafico comparativo gerado em: {arquivo}")
         return arquivo

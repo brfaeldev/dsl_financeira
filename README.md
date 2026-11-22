@@ -29,12 +29,7 @@ dsl_financeira/
 │   └── comparacao_cenarios.dsl      # Analise comparativa entre multiplos investimentos
 ├── testes/                          # Suite de testes automatizados (padrao unittest)
 │   ├── __init__.py
-│   └── teste_cenario.py             # Testes de arquitetura, simulacao, semantica e graficos
-├── docs/                            # Documentacao tecnica e academica
-│   ├── ANALISE_PROJETO.md           # Analise arquitetural e historico do projeto
-│   ├── GUIA_ARTIGO_FINAL.md         # Guia e textos prontos para o artigo IEEE final
-│   ├── PONTOS_EVOLUCAO.md           # Roadmap de evolucoes futuras da linguagem
-│   └── Teoria_da_Computação_...pdf  # Artigo parcial de referencia
+│   └── teste_cenario.py             # Testes de arquitetura, simulacao, semantica, graficos e CLI
 └── output/                          # Diretorio onde os graficos (.png) sao gerados (ignorado pelo Git)
 ```
 

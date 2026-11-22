@@ -38,13 +38,13 @@ __all__ = [
 ]
 
 
-def executar(codigo):
+def executar(codigo, diretorio_saida="output", parser="lalr"):
     """Executa o pipeline completo: Parser -> AST -> Semantico -> Execucao.
 
     Retorna a `TabelaSimbolos` populada para permitir inspecao programatica
     (por exemplo, na suite de testes automatizados).
     """
-    ast = analisar(codigo)
+    ast = analisar(codigo, parser=parser)
     tabela = AnalisadorSemantico().analisar(ast)
-    Interpretador(tabela).executar(ast)
+    Interpretador(tabela, diretorio_saida=diretorio_saida).executar(ast)
     return tabela

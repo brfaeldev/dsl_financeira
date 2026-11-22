@@ -6,7 +6,10 @@ cache do parser), a precisao matematica das simulacoes financeiras, a captura de
 erros semanticos e a geracao de graficos individuais e comparativos.
 """
 
+import contextlib
+import io
 import os
+import tempfile
 import unittest
 
 from lark.visitors import Interpreter
@@ -15,9 +18,11 @@ from dsl_financeira import (
     AnalisadorSemantico,
     Interpretador,
     Resultado,
+    analisar,
     criar_parser,
     executar,
 )
+from dsl_financeira.cli import main as cli_main
 from dsl_financeira.erros import (
     DeclaracaoDuplicadaError,
     InvestimentoNaoDeclaradoError,
@@ -47,6 +52,25 @@ class TestArquiteturaCompilador(unittest.TestCase):
 
     def test_cache_instancia_parser(self):
         self.assertIs(criar_parser("lalr"), criar_parser("lalr"))
+
+    def test_compatibilidade_parser_earley_e_inteiros_em_campos_decimais(self):
+        codigo = """
+        INVESTIMENTO "Inteiros"
+            VALOR_INICIAL 5000
+            APORTE 500 POR 12 MESES
+            TAXA 1 PORCENTO AO_MES
+            IMPOSTO 15 PORCENTO
+        FIM
+        """
+        ast_lalr = analisar(codigo, parser="lalr")
+        ast_earley = analisar(codigo, parser="earley")
+        self.assertEqual(ast_lalr, ast_earley)
+        tabela = executar(codigo, parser="earley")
+        simbolo = tabela.buscar("Inteiros")
+        self.assertEqual(simbolo.valor_inicial, 5000.0)
+        self.assertEqual(simbolo.aporte, 500.0)
+        self.assertAlmostEqual(simbolo.taxa, 0.01, places=12)
+        self.assertAlmostEqual(simbolo.imposto, 0.15, places=12)
 
 
 class TestSimulacaoFinanceira(unittest.TestCase):
@@ -113,6 +137,31 @@ class TestSimulacaoFinanceira(unittest.TestCase):
         self.assertAlmostEqual(tabela.buscar("CurtoPrazo").imposto, 0.225, places=12)
         self.assertAlmostEqual(tabela.buscar("MedioPrazo").imposto, 0.20, places=12)
         self.assertAlmostEqual(tabela.buscar("LongoPrazo").imposto, 0.15, places=12)
+
+    def test_taxa_zero_e_consistencia_simulacao_evolucao(self):
+        codigo = """
+        INVESTIMENTO "SemJuros"
+            VALOR_INICIAL 1000.00
+            APORTE 200.00 POR 10 MESES
+            TAXA 0.0 PORCENTO AO_MES
+            IMPOSTO 15.0 PORCENTO
+        FIM
+        """
+        tabela = executar(codigo)
+        simbolo = tabela.buscar("SemJuros")
+        resultado = Resultado(simbolo)
+        self.assertEqual(resultado.total_investido, 3000.00)
+        self.assertEqual(resultado.rendimento_bruto, 0.0)
+        self.assertEqual(resultado.valor_final_liquido, 3000.00)
+
+        # Verifica convergencia entre a simulacao mes a mes e a formula fechada
+        tabela_ap = executar(CENARIO_APOSENTADORIA)
+        sim_ap = tabela_ap.buscar("Aposentadoria")
+        res_ap = Resultado(sim_ap)
+        _, brutos, liquidos, investidos = Interpretador._simular_evolucao(sim_ap)
+        self.assertAlmostEqual(brutos[-1], res_ap.valor_final_bruto, places=9)
+        self.assertAlmostEqual(liquidos[-1], res_ap.valor_final_liquido, places=9)
+        self.assertAlmostEqual(investidos[-1], res_ap.total_investido, places=9)
 
 
 class TestAnaliseSemantica(unittest.TestCase):
@@ -204,9 +253,80 @@ class TestAnaliseSemantica(unittest.TestCase):
         with self.assertRaises(ParametroDuplicadoError):
             executar(codigo)
 
+    def test_conflito_aporte_e_periodo(self):
+        codigo = """
+        INVESTIMENTO "ConflitoPrazo"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+            APORTE 200.00 POR 12 MESES
+        FIM
+        """
+        with self.assertRaises(ParametroDuplicadoError) as ctx:
+            executar(codigo)
+        self.assertIn("conflito de parametros", str(ctx.exception))
+
+    def test_conflito_imposto_fixo_e_regressivo(self):
+        codigo = """
+        INVESTIMENTO "ConflitoImposto"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+            IMPOSTO 15.0 PORCENTO
+            IMPOSTO REGRESSIVO
+        FIM
+        """
+        with self.assertRaises(ParametroDuplicadoError) as ctx:
+            executar(codigo)
+        self.assertIn("conflito de parametros", str(ctx.exception))
+
+    def test_identificador_vazio_ou_espacos(self):
+        codigo = """
+        INVESTIMENTO "   "
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+        FIM
+        """
+        with self.assertRaises(ValorForaDoDominioError):
+            executar(codigo)
+
+    def test_investimento_sem_capital(self):
+        codigo_sem_parametro_capital = """
+        INVESTIMENTO "SemCapital"
+            PERIODO 12 MESES
+            TAXA 1.0 PORCENTO AO_MES
+        FIM
+        """
+        with self.assertRaises(ParametroObrigatorioError):
+            executar(codigo_sem_parametro_capital)
+
+        codigo_capital_zero = """
+        INVESTIMENTO "CapitalZero"
+            VALOR_INICIAL 0.00
+            APORTE 0.00 POR 12 MESES
+            TAXA 1.0 PORCENTO AO_MES
+        FIM
+        """
+        with self.assertRaises(ValorForaDoDominioError):
+            executar(codigo_capital_zero)
+
+    def test_rollback_tabela_simbolos_apos_erro_semantico(self):
+        analisador = AnalisadorSemantico()
+        ast_invalida = analisar(
+            """
+            INVESTIMENTO "Incompleto"
+                VALOR_INICIAL 1000.00
+                TAXA -1.0 PORCENTO AO_MES
+                PERIODO 12 MESES
+            FIM
+            """
+        )
+        with self.assertRaises(ValorForaDoDominioError):
+            analisador.analisar(ast_invalida)
+        with self.assertRaises(InvestimentoNaoDeclaradoError):
+            analisador.tabela.buscar("Incompleto")
+
 
 class TestGeracaoGraficos(unittest.TestCase):
-    """Valida a geracao de graficos individuais e comparativos em output/."""
+    """Valida a geracao de graficos individuais e comparativos em diretorio isolado."""
 
     def test_gerar_grafico_individual(self):
         codigo = """
@@ -218,10 +338,10 @@ class TestGeracaoGraficos(unittest.TestCase):
         FIM
         GERAR GRAFICO "Reserva"
         """
-        caminho = os.path.join("output", "grafico_Reserva.png")
-        executar(codigo)
-        self.assertTrue(os.path.exists(caminho))
-        os.remove(caminho)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            caminho = os.path.join(tmpdir, "grafico_Reserva.png")
+            executar(codigo, diretorio_saida=tmpdir)
+            self.assertTrue(os.path.exists(caminho))
 
     def test_sanitizacao_nome_arquivo_grafico(self):
         codigo = """
@@ -232,10 +352,10 @@ class TestGeracaoGraficos(unittest.TestCase):
         FIM
         GERAR GRAFICO "CDB 110% / Liquidez: Diaria"
         """
-        caminho = os.path.join("output", "grafico_CDB_110%_Liquidez_Diaria.png")
-        executar(codigo)
-        self.assertTrue(os.path.exists(caminho))
-        os.remove(caminho)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            caminho = os.path.join(tmpdir, "grafico_CDB_110%_Liquidez_Diaria.png")
+            executar(codigo, diretorio_saida=tmpdir)
+            self.assertTrue(os.path.exists(caminho))
 
     def test_comparar_grafico_multiplos_cenarios(self):
         codigo = """
@@ -253,10 +373,97 @@ class TestGeracaoGraficos(unittest.TestCase):
         FIM
         COMPARAR GRAFICO "CenarioA" "CenarioB"
         """
-        caminho = os.path.join("output", "grafico_comparativo_CenarioA_vs_CenarioB.png")
-        executar(codigo)
-        self.assertTrue(os.path.exists(caminho))
-        os.remove(caminho)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            caminho = os.path.join(
+                tmpdir, "grafico_comparativo_CenarioA_vs_CenarioB.png"
+            )
+            executar(codigo, diretorio_saida=tmpdir)
+            self.assertTrue(os.path.exists(caminho))
+
+    def test_gerar_grafico_multiplos_cenarios_delega_para_comparativo(self):
+        codigo = """
+        INVESTIMENTO "A"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+            TAXA 0.8 PORCENTO AO_MES
+        FIM
+        INVESTIMENTO "B"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+            TAXA 1.0 PORCENTO AO_MES
+        FIM
+        GERAR GRAFICO "A" "B"
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            caminho = os.path.join(tmpdir, "grafico_comparativo_A_vs_B.png")
+            executar(codigo, diretorio_saida=tmpdir)
+            self.assertTrue(os.path.exists(caminho))
+
+    def test_prevencao_colisao_nomes_arquivos_sanitizados(self):
+        codigo = """
+        INVESTIMENTO "CDB 1"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+        FIM
+        INVESTIMENTO "CDB/1"
+            VALOR_INICIAL 2000.00
+            PERIODO 12 MESES
+        FIM
+        GERAR GRAFICO "CDB 1"
+        GERAR GRAFICO "CDB/1"
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            executar(codigo, diretorio_saida=tmpdir)
+            self.assertTrue(os.path.exists(os.path.join(tmpdir, "grafico_CDB_1.png")))
+            self.assertTrue(
+                os.path.exists(os.path.join(tmpdir, "grafico_CDB_1_2.png"))
+            )
+
+
+class TestCLI(unittest.TestCase):
+    """Valida a interface de linha de comando (cli.py)."""
+
+    def test_cli_execucao_sucesso_e_help(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            script = os.path.join(tmpdir, "teste.dsl")
+            with open(script, "w", encoding="utf-8") as f:
+                f.write(CENARIO_APOSENTADORIA)
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                codigo_saida = cli_main(["dsl_financeira", script, "-o", tmpdir])
+            self.assertEqual(codigo_saida, 0)
+            self.assertIn("RESUMO DO INVESTIMENTO: Aposentadoria", out.getvalue())
+
+            out_help = io.StringIO()
+            with contextlib.redirect_stdout(out_help):
+                codigo_help = cli_main(["dsl_financeira", "--help"])
+            self.assertEqual(codigo_help, 0)
+
+    def test_cli_erros_arquivo_sintaxe_e_semantico(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(cli_main(["dsl_financeira"]), 1)
+            self.assertEqual(cli_main(["dsl_financeira", "nao_existe.dsl"]), 1)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            arq_sintaxe = os.path.join(tmpdir, "erro_sintaxe.dsl")
+            with open(arq_sintaxe, "w", encoding="utf-8") as f:
+                f.write('INVESTIMENTO "Invalido" COMANDO_DESCONHECIDO FIM')
+
+            err_sintaxe = io.StringIO()
+            with contextlib.redirect_stderr(err_sintaxe):
+                self.assertEqual(cli_main(["dsl_financeira", arq_sintaxe]), 1)
+            self.assertIn("[Erro de Sintaxe]", err_sintaxe.getvalue())
+
+            arq_semantico = os.path.join(tmpdir, "erro_semantico.dsl")
+            with open(arq_semantico, "w", encoding="utf-8") as f:
+                f.write('IMPRIMIR RESUMO "NaoExiste"')
+
+            err_semantico = io.StringIO()
+            with contextlib.redirect_stderr(err_semantico):
+                self.assertEqual(cli_main(["dsl_financeira", arq_semantico]), 1)
+            self.assertIn("[Erro Semantico]", err_semantico.getvalue())
 
 
 if __name__ == "__main__":

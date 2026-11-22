@@ -38,12 +38,16 @@ bloco_parametros: parametro+
           | imposto
           | imposto_regressivo
 
-valor_inicial: "VALOR_INICIAL" NUMBER
-aporte: "APORTE" NUMBER "POR" INT "MESES"
+valor_inicial: "VALOR_INICIAL" numero
+aporte: "APORTE" numero "POR" INT "MESES"
 periodo: "PERIODO" INT "MESES"
-taxa: "TAXA" NUMBER "PORCENTO" "AO_MES"
-imposto: "IMPOSTO" NUMBER "PORCENTO"
+taxa: "TAXA" numero "PORCENTO" "AO_MES"
+imposto: "IMPOSTO" numero "PORCENTO"
 imposto_regressivo: "IMPOSTO" "REGRESSIVO"
+
+// Regra inline que aceita tanto literais decimais (NUMBER) quanto inteiros (INT),
+// mantendo os tokens lexicos disjuntos para compatibilidade entre LALR(1) e Earley.
+?numero: NUMBER | INT
 
 // Regras de acao executadas pelo Interpretador apos a validacao semantica
 ?comando: imprimir_resumo
@@ -56,11 +60,12 @@ gerar_grafico: "GERAR" "GRAFICO" STRING+
 comparar_grafico: "COMPARAR" "GRAFICO" STRING STRING+
 
 // Tokens lexicos:
-// NUMBER e INT aceitam sinal negativo opcional ('-?') no Lexer para que valores
-// negativos nao gerem erro de sintaxe obscuro, sendo capturados na Analise Semantica
-// com diagnostico especifico de dominio (ValorForaDoDominioError).
+// NUMBER (decimais) e INT (inteiros) sao disjuntos e aceitam sinal negativo
+// opcional ('-?') no Lexer para que valores negativos nao gerem erro de sintaxe
+// obscuro, sendo capturados na Analise Semantica com diagnostico especifico de
+// dominio (ValorForaDoDominioError).
 STRING: /"[^"]*"/
-NUMBER: /-?[0-9]+(\.[0-9]+)?/
+NUMBER: /-?[0-9]+\.[0-9]+/
 INT: /-?[0-9]+/
 
 // Ignora espacos em branco, quebras de linha e comentarios iniciados por '#'

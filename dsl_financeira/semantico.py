@@ -54,6 +54,16 @@ class AnalisadorSemantico(Interpreter):
     def declaracao(self, tree):
         identificador = _texto(tree.children[0])
         linha, coluna = _posicao(tree)
+        if not identificador.strip():
+            raise ValorForaDoDominioError(
+                identificador,
+                "INVESTIMENTO",
+                f'"{identificador}"',
+                "O identificador do investimento nao pode ser vazio.",
+                linha=linha,
+                coluna=coluna,
+            )
+
         simbolo = self.tabela.declarar(identificador, linha=linha, coluna=coluna)
 
         self._simbolo_atual = simbolo
@@ -72,16 +82,44 @@ class AnalisadorSemantico(Interpreter):
                     coluna=coluna,
                 )
 
+            # Todo investimento precisa declarar capital (VALOR_INICIAL e/ou APORTE)
+            # com montante positivo.
+            if (
+                "valor_inicial" not in self._vistos_atual
+                and "aporte" not in self._vistos_atual
+            ):
+                raise ParametroObrigatorioError(
+                    identificador,
+                    "VALOR_INICIAL <valor> ou APORTE <valor> POR <n> MESES",
+                    linha=linha,
+                    coluna=coluna,
+                )
+            if simbolo.valor_inicial <= 0 and simbolo.aporte <= 0:
+                raise ValorForaDoDominioError(
+                    identificador,
+                    "VALOR_INICIAL / APORTE",
+                    0.0,
+                    "O investimento deve possuir capital positivo (valor inicial ou aporte maior que zero).",
+                    linha=linha,
+                    coluna=coluna,
+                )
+
             # A aliquota regressiva depende do prazo final (n), por isso e
             # resolvida ao encerrar a leitura de todos os parametros do bloco.
             if simbolo.imposto_regressivo:
                 simbolo.imposto = aliquota_regressiva_ir(simbolo.periodo)
+        except Exception:
+            # Rollback: evita manter simbolo invalido/incompleto na Tabela de Simbolos
+            self.tabela.remover(identificador)
+            raise
         finally:
             # Garante limpeza do estado de bloco mesmo se uma excecao for lancada
             self._simbolo_atual = None
             self._vistos_atual = set()
 
-    def _registrar_parametro(self, nome, tree, grupo=None, rotulo_conflito=None):
+    def _registrar_parametro(
+        self, nome, tree, grupo=None, rotulo_conflito=None, mensagem_conflito=None
+    ):
         """Registra a ocorrencia de um parametro no bloco atual e impede duplicatas.
 
         O argumento `grupo` permite bloquear parametros mutuamente exclusivos
@@ -98,6 +136,7 @@ class AnalisadorSemantico(Interpreter):
             raise ParametroDuplicadoError(
                 identificador,
                 rotulo_conflito or grupo.upper(),
+                mensagem=mensagem_conflito,
                 linha=linha,
                 coluna=coluna,
             )
@@ -122,8 +161,16 @@ class AnalisadorSemantico(Interpreter):
         simbolo.valor_inicial = valor
 
     def aporte(self, tree):
+        identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
-            "aporte", tree, grupo="periodo_definido", rotulo_conflito="PERIODO"
+            "aporte",
+            tree,
+            grupo="periodo_definido",
+            rotulo_conflito="PERIODO",
+            mensagem_conflito=(
+                f"Investimento '{identificador}': conflito de parametros entre "
+                f"'APORTE ... POR <n> MESES' e 'PERIODO <n> MESES'."
+            ),
         )
         simbolo = self._simbolo_atual
         linha, coluna = _posicao(tree)
@@ -151,8 +198,16 @@ class AnalisadorSemantico(Interpreter):
         simbolo.periodo = meses
 
     def periodo(self, tree):
+        identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
-            "periodo", tree, grupo="periodo_definido", rotulo_conflito="PERIODO"
+            "periodo",
+            tree,
+            grupo="periodo_definido",
+            rotulo_conflito="PERIODO",
+            mensagem_conflito=(
+                f"Investimento '{identificador}': conflito de parametros entre "
+                f"'APORTE ... POR <n> MESES' e 'PERIODO <n> MESES'."
+            ),
         )
         simbolo = self._simbolo_atual
         linha, coluna = _posicao(tree)
@@ -185,8 +240,16 @@ class AnalisadorSemantico(Interpreter):
         simbolo.taxa = valor / 100.0
 
     def imposto(self, tree):
+        identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
-            "imposto", tree, grupo="imposto_definido", rotulo_conflito="IMPOSTO"
+            "imposto",
+            tree,
+            grupo="imposto_definido",
+            rotulo_conflito="IMPOSTO",
+            mensagem_conflito=(
+                f"Investimento '{identificador}': conflito de parametros entre "
+                f"'IMPOSTO <valor> PORCENTO' e 'IMPOSTO REGRESSIVO'."
+            ),
         )
         simbolo = self._simbolo_atual
         linha, coluna = _posicao(tree)
@@ -203,11 +266,16 @@ class AnalisadorSemantico(Interpreter):
         simbolo.imposto = valor / 100.0
 
     def imposto_regressivo(self, tree):
+        identificador = self._simbolo_atual.identificador
         self._registrar_parametro(
             "imposto_regressivo",
             tree,
             grupo="imposto_definido",
             rotulo_conflito="IMPOSTO",
+            mensagem_conflito=(
+                f"Investimento '{identificador}': conflito de parametros entre "
+                f"'IMPOSTO <valor> PORCENTO' e 'IMPOSTO REGRESSIVO'."
+            ),
         )
         self._simbolo_atual.imposto_regressivo = True
 

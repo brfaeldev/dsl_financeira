@@ -76,3 +76,7 @@ class TabelaSimbolos:
                 identificador, linha=linha, coluna=coluna
             )
         return self._simbolos[identificador]
+
+    def remover(self, identificador):
+        """Remove um identificador da tabela (usado para rollback se a validacao do bloco falhar)."""
+        self._simbolos.pop(identificador, None)

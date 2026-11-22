@@ -45,6 +45,14 @@ htmlcov/
 output/
 grafico_*.png
 
+# Documentacao e notas internas locais
+docs/
+
+# Arquivos temporarios e logs
+*.log
+tmp/
+temp/
+
 # Editores / IDEs
 .vscode/
 .idea/
