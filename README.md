@@ -12,13 +12,14 @@ O repositorio segue a organizacao padrao de pacotes Python (**PEP 621 / PyPA**):
 dsl_financeira/
 ├── pyproject.toml                   # Metadados do pacote, dependencias e entry points (PEP 621)
 ├── requirements.txt                 # Dependencias para instalacao rapida via pip
-├── main.py                          # Entry point conveniente na raiz
-├── app.py                           # Playground Web e Mini-IDE em Streamlit
+├── main.py                          # Entry point conveniente na raiz (CLI / REPL)
+├── app.py                           # Entry point conveniente na raiz (Playground Web Streamlit)
 ├── README.md                        # Documentacao principal do repositorio
 ├── dsl_financeira/                  # Pacote principal do interpretador
 │   ├── __init__.py                  # API publica do pacote (executar, analisar, classes)
 │   ├── __main__.py                  # Suporte a execucao como modulo (python -m dsl_financeira)
 │   ├── cli.py                       # Interface de linha de comando (CLI) e modo interativo (REPL)
+│   ├── playground.py                # Servicos e componentes visuais do Playground Web em Streamlit
 │   ├── gramatica.lark               # Gramatica formal (EBNF) para a biblioteca Lark
 │   ├── parser.py                    # Front-End: Lexer e Parser LALR(1) / Earley
 │   ├── semantico.py                 # AST Visitor de Analise Semantica
@@ -28,17 +29,24 @@ dsl_financeira/
 │   ├── graficos.py                  # Renderizacao grafica estatica (PNG) e interativa (HTML Plotly)
 │   ├── exportacao.py                # Exportadores CSV/JSON, relatorios Markdown e formatacao
 │   └── erros.py                     # Hierarquia de excecoes semanticas customizadas
+├── docs/                            # Documentacao e guias de uso da linguagem
+│   └── GUIA_COMPLETO_DSL.md         # Manual passo a passo de sintaxe e comandos da DSL
 ├── exemplos/                        # Scripts de demonstracao na linguagem .dsl
 │   ├── aposentadoria.dsl            # Cenario base do artigo IEEE
 │   ├── comparacao_cenarios.dsl      # Analise comparativa entre multiplos investimentos
-│   └── planejamento_avancado.dsl    # Cenario completo (CDI, IPCA+, inflacao, safras, come-cotas, renda)
+│   ├── planejamento_avancado.dsl    # Cenario completo (CDI, IPCA+, inflacao, safras, come-cotas, renda)
+│   └── referencia_completa.dsl      # Template de referencia com todas as construcoes da linguagem
 ├── vscode-dsl-financeira/           # Extensao TextMate de Syntax Highlighting para VS Code
 │   ├── package.json
 │   ├── language-configuration.json
 │   └── syntaxes/dsl.tmLanguage.json
-├── testes/                          # Suite de testes automatizados (padrao unittest)
+├── testes/                          # Suite de testes automatizados modulares (padrao unittest)
 │   ├── __init__.py
-│   └── teste_cenario.py             # 36 testes de arquitetura, simulacao, semantica, graficos e CLI/REPL
+│   ├── teste_arquitetura.py         # Testes de arquitetura Visitor, cache e parser LALR(1)/Earley
+│   ├── teste_semantico.py           # Testes de validacao semantica, Tabela de Simbolos e erros
+│   ├── teste_motor.py               # Testes matematicos, financeiros, tributarios e de usufruto
+│   ├── teste_saidas.py              # Testes de graficos PNG/HTML, exportacoes CSV/JSON e relatorio
+│   └── teste_cli.py                 # Testes de CLI, REPL, gramatica VS Code e Playground
 └── output/                          # Diretorio onde os graficos e relatorios sao gerados
 ```
 

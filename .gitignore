@@ -45,8 +45,11 @@ htmlcov/
 output/
 grafico_*.png
 
-# Documentacao e notas internas locais
-docs/
+# Rascunhos internos do artigo IEEE (mantem docs/GUIA_COMPLETO_DSL.md versionado)
+docs/*.pdf
+docs/ANALISE_PROJETO.md
+docs/GUIA_ARTIGO_FINAL.md
+docs/PONTOS_EVOLUCAO.md
 
 # Arquivos temporarios e logs
 *.log
