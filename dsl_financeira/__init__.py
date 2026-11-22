@@ -20,6 +20,7 @@ from .tabela_simbolos import Investimento, TabelaSimbolos, aliquota_regressiva_i
 __all__ = [
     "analisar",
     "criar_parser",
+    "executar",
     "AnalisadorSemantico",
     "Interpretador",
     "Resultado",

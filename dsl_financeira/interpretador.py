@@ -14,7 +14,8 @@ Modelo de calculo (conforme a fundamentacao teorica do trabalho):
     Valor Final Liquido = FV_inicial + FV_aportes - Imposto de Renda
 """
 
-from lark import Tree
+import os
+
 from lark.visitors import Interpreter
 
 from .semantico import _texto
@@ -54,9 +55,10 @@ class Resultado:
 class Interpretador(Interpreter):
     """AST Visitor (Lark Interpreter) que executa os comandos do programa."""
 
-    def __init__(self, tabela):
+    def __init__(self, tabela, diretorio_saida="output"):
         super().__init__()
         self.tabela = tabela
+        self.diretorio_saida = diretorio_saida
 
     def executar(self, ast):
         """Percorre a AST executando os nos de comando via Visitor."""
@@ -94,12 +96,8 @@ class Interpretador(Interpreter):
     # ------------------------------------------------------------------
     # IMPRIMIR RESUMO
     # ------------------------------------------------------------------
-    def imprimir_resumo(self, alvo):
-        if isinstance(alvo, Tree):
-            identificador = _texto(alvo.children[0])
-        else:
-            identificador = str(alvo)
-
+    def imprimir_resumo(self, tree):
+        identificador = _texto(tree.children[0])
         simbolo = self.tabela.buscar(identificador)
         resultado = Resultado(simbolo)
 
@@ -113,16 +111,10 @@ class Interpretador(Interpreter):
     # ------------------------------------------------------------------
     # GERAR GRAFICO / COMPARAR GRAFICO
     # ------------------------------------------------------------------
-    def gerar_grafico(self, alvo):
-        if isinstance(alvo, Tree):
-            identificadores = [_texto(t) for t in alvo.children]
-        elif isinstance(alvo, (list, tuple)):
-            identificadores = [str(i) for i in alvo]
-        else:
-            identificadores = [str(alvo)]
-
+    def gerar_grafico(self, tree):
+        identificadores = [_texto(t) for t in tree.children]
         if len(identificadores) > 1:
-            return self.comparar_grafico(identificadores)
+            return self.comparar_grafico(tree)
 
         identificador = identificadores[0]
         import matplotlib
@@ -145,17 +137,16 @@ class Interpretador(Interpreter):
         plt.grid(True)
         plt.tight_layout()
 
-        arquivo = f"grafico_{identificador.replace(' ', '_')}.png"
+        os.makedirs(self.diretorio_saida, exist_ok=True)
+        nome_arquivo = f"grafico_{identificador.replace(' ', '_')}.png"
+        arquivo = os.path.join(self.diretorio_saida, nome_arquivo)
         plt.savefig(arquivo, dpi=150)
         plt.close()
         print(f"Grafico gerado em: {arquivo}")
         return arquivo
 
-    def comparar_grafico(self, alvo):
-        if isinstance(alvo, Tree):
-            identificadores = [_texto(t) for t in alvo.children]
-        else:
-            identificadores = [str(i) for i in alvo]
+    def comparar_grafico(self, tree):
+        identificadores = [_texto(t) for t in tree.children]
 
         import matplotlib
         matplotlib.use("Agg")
@@ -190,8 +181,10 @@ class Interpretador(Interpreter):
         plt.grid(True)
         plt.tight_layout()
 
+        os.makedirs(self.diretorio_saida, exist_ok=True)
         nomes = "_vs_".join(i.replace(" ", "_") for i in identificadores)
-        arquivo = f"grafico_comparativo_{nomes}.png"
+        nome_arquivo = f"grafico_comparativo_{nomes}.png"
+        arquivo = os.path.join(self.diretorio_saida, nome_arquivo)
         plt.savefig(arquivo, dpi=150)
         plt.close()
         print(f"Grafico comparativo gerado em: {arquivo}")

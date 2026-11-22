@@ -42,6 +42,7 @@ htmlcov/
 .env.*
 
 # Saidas geradas pela DSL Financeira (graficos Matplotlib)
+output/
 grafico_*.png
 
 # Editores / IDEs

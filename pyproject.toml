@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dsl-financeira"
+version = "1.0.0"
+description = "Interpretador de uma Linguagem de Dominio Especifico (DSL) para Modelagem e Simulacao Financeira de Investimentos"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Bruno Rafael Barbosa" },
+    { name = "Joao Pedro Magrin" },
+]
+dependencies = [
+    "lark>=1.1.0",
+    "matplotlib>=3.7.0",
+]
+
+[project.scripts]
+dsl-financeira = "dsl_financeira.cli:run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dsl_financeira*"]
+
+[tool.setuptools.package-data]
+dsl_financeira = ["*.lark"]
+
+[tool.pytest.ini_options]
+testpaths = ["testes"]
+python_files = ["teste_*.py", "test_*.py"]

@@ -44,13 +44,6 @@ class Investimento:
             return aliquota_regressiva_ir(max(1, mes))
         return self.imposto
 
-    def __repr__(self):
-        return (
-            f"Investimento({self.identificador!r}, P={self.valor_inicial}, "
-            f"PMT={self.aporte}, n={self.periodo}, r={self.taxa}, "
-            f"t={self.imposto}, regressivo={self.imposto_regressivo})"
-        )
-
 
 class TabelaSimbolos:
     """Dicionario global de investimentos declarados no programa."""
@@ -69,12 +62,3 @@ class TabelaSimbolos:
         if identificador not in self._simbolos:
             raise InvestimentoNaoDeclaradoError(identificador)
         return self._simbolos[identificador]
-
-    def existe(self, identificador):
-        return identificador in self._simbolos
-
-    def itens(self):
-        return self._simbolos.items()
-
-    def __len__(self):
-        return len(self._simbolos)

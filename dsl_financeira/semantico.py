@@ -142,7 +142,6 @@ class AnalisadorSemantico(Interpreter):
                 "A aliquota deve estar entre 0 e 100 porcento.",
             )
         simbolo.imposto = valor / 100.0
-        simbolo.imposto_regressivo = False
 
     def imposto_regressivo(self, tree):
         self._registrar_parametro(
