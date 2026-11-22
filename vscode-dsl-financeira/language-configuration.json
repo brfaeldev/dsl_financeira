@@ -1,6 +1,8 @@
 {
   "comments": {
-    "lineComment": "#"
+    "lineComment": {
+      "comment": "#"
+    }
   },
   "brackets": [],
   "autoClosingPairs": [
@@ -13,10 +15,10 @@
     }
   ],
   "surroundingPairs": [
-    [
-      "\"",
-      "\""
-    ]
+    {
+      "open": "\"",
+      "close": "\""
+    }
   ],
   "folding": {
     "markers": {
