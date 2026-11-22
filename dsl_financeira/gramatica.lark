@@ -5,10 +5,13 @@
 // bloco_parametros  ::= parametro+
 // parametro         ::= "VALOR_INICIAL" NUMBER
 //                     | "APORTE" NUMBER "POR" INT "MESES"
+//                     | "PERIODO" INT "MESES"
 //                     | "TAXA" NUMBER "PORCENTO" "AO_MES"
 //                     | "IMPOSTO" NUMBER "PORCENTO"
+//                     | "IMPOSTO" "REGRESSIVO"
 // comando           ::= "IMPRIMIR" "RESUMO" STRING
-//                     | "GERAR" "GRAFICO" STRING
+//                     | "GERAR" "GRAFICO" STRING+
+//                     | "COMPARAR" "GRAFICO" STRING STRING+
 
 programa: (declaracao | comando)+
 
@@ -18,23 +21,29 @@ bloco_parametros: parametro+
 
 ?parametro: valor_inicial
           | aporte
+          | periodo
           | taxa
           | imposto
+          | imposto_regressivo
 
 valor_inicial: "VALOR_INICIAL" NUMBER
 aporte: "APORTE" NUMBER "POR" INT "MESES"
+periodo: "PERIODO" INT "MESES"
 taxa: "TAXA" NUMBER "PORCENTO" "AO_MES"
 imposto: "IMPOSTO" NUMBER "PORCENTO"
+imposto_regressivo: "IMPOSTO" "REGRESSIVO"
 
 ?comando: imprimir_resumo
         | gerar_grafico
+        | comparar_grafico
 
 imprimir_resumo: "IMPRIMIR" "RESUMO" STRING
-gerar_grafico: "GERAR" "GRAFICO" STRING
+gerar_grafico: "GERAR" "GRAFICO" STRING+
+comparar_grafico: "COMPARAR" "GRAFICO" STRING STRING+
 
 STRING: /"[^"]*"/
-NUMBER: /[0-9]+(\.[0-9]+)?/
-INT: /[0-9]+/
+NUMBER: /-?[0-9]+(\.[0-9]+)?/
+INT: /-?[0-9]+/
 
 %import common.WS
 %ignore WS

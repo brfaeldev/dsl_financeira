@@ -8,23 +8,29 @@ from .erros import (
     DeclaracaoDuplicadaError,
     ErroSemantico,
     InvestimentoNaoDeclaradoError,
+    ParametroDuplicadoError,
+    ParametroObrigatorioError,
     ValorForaDoDominioError,
 )
-from .interpretador import Interpretador
+from .interpretador import Interpretador, Resultado
 from .parser import analisar, criar_parser
 from .semantico import AnalisadorSemantico
-from .tabela_simbolos import Investimento, TabelaSimbolos
+from .tabela_simbolos import Investimento, TabelaSimbolos, aliquota_regressiva_ir
 
 __all__ = [
     "analisar",
     "criar_parser",
     "AnalisadorSemantico",
     "Interpretador",
+    "Resultado",
     "TabelaSimbolos",
     "Investimento",
+    "aliquota_regressiva_ir",
     "ErroSemantico",
     "DeclaracaoDuplicadaError",
     "InvestimentoNaoDeclaradoError",
+    "ParametroDuplicadoError",
+    "ParametroObrigatorioError",
     "ValorForaDoDominioError",
 ]
 

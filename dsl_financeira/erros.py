@@ -16,7 +16,7 @@ class DeclaracaoDuplicadaError(ErroSemantico):
 
 
 class InvestimentoNaoDeclaradoError(ErroSemantico):
-    """Referencia a um investimento nao declarado (IMPRIMIR / GERAR)."""
+    """Referencia a um investimento nao declarado (IMPRIMIR / GERAR / COMPARAR)."""
 
     def __init__(self, identificador):
         super().__init__(
@@ -36,3 +36,27 @@ class ValorForaDoDominioError(ErroSemantico):
         self.identificador = identificador
         self.parametro = parametro
         self.valor = valor
+
+
+class ParametroDuplicadoError(ErroSemantico):
+    """Parametro declarado mais de uma vez no mesmo bloco INVESTIMENTO."""
+
+    def __init__(self, identificador, parametro):
+        super().__init__(
+            f"Investimento '{identificador}': parametro '{parametro}' "
+            f"declarado mais de uma vez."
+        )
+        self.identificador = identificador
+        self.parametro = parametro
+
+
+class ParametroObrigatorioError(ErroSemantico):
+    """Ausencia de parametro obrigatorio (ex.: prazo em meses) no bloco INVESTIMENTO."""
+
+    def __init__(self, identificador, parametro):
+        super().__init__(
+            f"Investimento '{identificador}': parametro obrigatorio ausente "
+            f"({parametro})."
+        )
+        self.identificador = identificador
+        self.parametro = parametro

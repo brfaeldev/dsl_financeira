@@ -6,6 +6,8 @@ Uso:
 
 import sys
 
+from lark.exceptions import LarkError
+
 from dsl_financeira import executar
 from dsl_financeira.erros import ErroSemantico
 
@@ -28,8 +30,11 @@ def main(argv):
     except ErroSemantico as erro:
         print(f"[Erro Semantico] {erro}")
         return 1
-    except Exception as erro:  # erros de analise lexica/sintatica
+    except LarkError as erro:
         print(f"[Erro de Sintaxe] {erro}")
+        return 1
+    except Exception as erro:
+        print(f"[Erro de Execucao] {erro}")
         return 1
 
     return 0

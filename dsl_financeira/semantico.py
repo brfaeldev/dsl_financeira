@@ -1,14 +1,19 @@
 """Analise Semantica da DSL Financeira.
 
-Uma classe inspetora percorre a AST, registrando as declaracoes de investimento
-na Tabela de Simbolos e verificando restricoes de integridade (e.g., taxas de
-juros nao negativas, prazos maiores que zero).
+Implementa um AST Visitor usando a infraestrutura nativa da biblioteca Lark
+(lark.visitors.Interpreter) para percorrer a AST, registrar as declaracoes de
+investimento na Tabela de Simbolos e verificar restricoes de integridade
+(e.g., taxas de juros nao negativas, prazos obrigatorios maiores que zero).
 """
 
-from lark import Tree
+from lark.visitors import Interpreter
 
-from .erros import ValorForaDoDominioError
-from .tabela_simbolos import TabelaSimbolos
+from .erros import (
+    ParametroDuplicadoError,
+    ParametroObrigatorioError,
+    ValorForaDoDominioError,
+)
+from .tabela_simbolos import TabelaSimbolos, aliquota_regressiva_ir
 
 
 def _texto(token):
@@ -16,83 +21,146 @@ def _texto(token):
     return str(token)[1:-1]
 
 
-class AnalisadorSemantico:
-    """Inspetor da AST responsavel por alimentar a Tabela de Simbolos."""
+class AnalisadorSemantico(Interpreter):
+    """AST Visitor (Lark Interpreter) responsavel por alimentar a Tabela de Simbolos."""
 
     def __init__(self):
+        super().__init__()
         self.tabela = TabelaSimbolos()
+        self._simbolo_atual = None
+        self._vistos_atual = set()
 
     def analisar(self, ast):
-        for no in ast.children:
-            if not isinstance(no, Tree):
-                continue
-            if no.data == "declaracao":
-                self._visitar_declaracao(no)
-            elif no.data in ("imprimir_resumo", "gerar_grafico"):
-                self._visitar_comando(no)
+        """Percorre a AST validando declaracoes, parametros e comandos."""
+        self.visit(ast)
         return self.tabela
 
     # ------------------------------------------------------------------
-    # Declaracoes
+    # Declaracoes e bloco de parametros
     # ------------------------------------------------------------------
-    def _visitar_declaracao(self, no):
-        identificador = _texto(no.children[0])
+    def declaracao(self, tree):
+        identificador = _texto(tree.children[0])
         simbolo = self.tabela.declarar(identificador)
 
-        bloco = no.children[1]
-        for parametro in bloco.children:
-            self._visitar_parametro(simbolo, parametro)
-
-    def _visitar_parametro(self, simbolo, parametro):
-        nome = parametro.data
-
-        if nome == "valor_inicial":
-            valor = float(parametro.children[0])
-            if valor < 0:
-                raise ValorForaDoDominioError(
-                    simbolo.identificador, "VALOR_INICIAL", valor,
-                    "O valor inicial nao pode ser negativo.",
+        self._simbolo_atual = simbolo
+        self._vistos_atual = set()
+        try:
+            self.visit(tree.children[1])
+            if "periodo_definido" not in self._vistos_atual or simbolo.periodo <= 0:
+                raise ParametroObrigatorioError(
+                    identificador,
+                    "PERIODO <n> MESES ou APORTE <valor> POR <n> MESES",
                 )
-            simbolo.valor_inicial = valor
+            if simbolo.imposto_regressivo:
+                simbolo.imposto = aliquota_regressiva_ir(simbolo.periodo)
+        finally:
+            self._simbolo_atual = None
+            self._vistos_atual = set()
 
-        elif nome == "aporte":
-            valor = float(parametro.children[0])
-            meses = int(parametro.children[1])
-            if valor < 0:
-                raise ValorForaDoDominioError(
-                    simbolo.identificador, "APORTE", valor,
-                    "O aporte mensal nao pode ser negativo.",
-                )
-            if meses <= 0:
-                raise ValorForaDoDominioError(
-                    simbolo.identificador, "APORTE ... MESES", meses,
-                    "O periodo deve ser maior que zero.",
-                )
-            simbolo.aporte = valor
-            simbolo.periodo = meses
+    def _registrar_parametro(self, nome, grupo=None, rotulo_conflito=None):
+        identificador = self._simbolo_atual.identificador
+        if nome in self._vistos_atual:
+            raise ParametroDuplicadoError(identificador, nome.upper())
+        if grupo and grupo in self._vistos_atual:
+            raise ParametroDuplicadoError(
+                identificador, rotulo_conflito or grupo.upper()
+            )
+        self._vistos_atual.add(nome)
+        if grupo:
+            self._vistos_atual.add(grupo)
 
-        elif nome == "taxa":
-            valor = float(parametro.children[0])
-            if valor < 0:
-                raise ValorForaDoDominioError(
-                    simbolo.identificador, "TAXA", valor,
-                    "A taxa de juros nao pode ser negativa.",
-                )
-            simbolo.taxa = valor / 100.0
+    def valor_inicial(self, tree):
+        self._registrar_parametro("valor_inicial")
+        simbolo = self._simbolo_atual
+        valor = float(tree.children[0])
+        if valor < 0:
+            raise ValorForaDoDominioError(
+                simbolo.identificador,
+                "VALOR_INICIAL",
+                valor,
+                "O valor inicial nao pode ser negativo.",
+            )
+        simbolo.valor_inicial = valor
 
-        elif nome == "imposto":
-            valor = float(parametro.children[0])
-            if valor < 0 or valor > 100:
-                raise ValorForaDoDominioError(
-                    simbolo.identificador, "IMPOSTO", valor,
-                    "A aliquota deve estar entre 0 e 100 porcento.",
-                )
-            simbolo.imposto = valor / 100.0
+    def aporte(self, tree):
+        self._registrar_parametro("aporte", grupo="periodo_definido", rotulo_conflito="PERIODO")
+        simbolo = self._simbolo_atual
+        valor = float(tree.children[0])
+        meses = int(tree.children[1])
+        if valor < 0:
+            raise ValorForaDoDominioError(
+                simbolo.identificador,
+                "APORTE",
+                valor,
+                "O aporte mensal nao pode ser negativo.",
+            )
+        if meses <= 0:
+            raise ValorForaDoDominioError(
+                simbolo.identificador,
+                "APORTE ... MESES",
+                meses,
+                "O periodo deve ser maior que zero.",
+            )
+        simbolo.aporte = valor
+        simbolo.periodo = meses
+
+    def periodo(self, tree):
+        self._registrar_parametro("periodo", grupo="periodo_definido", rotulo_conflito="PERIODO")
+        simbolo = self._simbolo_atual
+        meses = int(tree.children[0])
+        if meses <= 0:
+            raise ValorForaDoDominioError(
+                simbolo.identificador,
+                "PERIODO ... MESES",
+                meses,
+                "O periodo deve ser maior que zero.",
+            )
+        simbolo.periodo = meses
+
+    def taxa(self, tree):
+        self._registrar_parametro("taxa")
+        simbolo = self._simbolo_atual
+        valor = float(tree.children[0])
+        if valor < 0:
+            raise ValorForaDoDominioError(
+                simbolo.identificador,
+                "TAXA",
+                valor,
+                "A taxa de juros nao pode ser negativa.",
+            )
+        simbolo.taxa = valor / 100.0
+
+    def imposto(self, tree):
+        self._registrar_parametro("imposto", grupo="imposto_definido", rotulo_conflito="IMPOSTO")
+        simbolo = self._simbolo_atual
+        valor = float(tree.children[0])
+        if valor < 0 or valor > 100:
+            raise ValorForaDoDominioError(
+                simbolo.identificador,
+                "IMPOSTO",
+                valor,
+                "A aliquota deve estar entre 0 e 100 porcento.",
+            )
+        simbolo.imposto = valor / 100.0
+        simbolo.imposto_regressivo = False
+
+    def imposto_regressivo(self, tree):
+        self._registrar_parametro(
+            "imposto_regressivo", grupo="imposto_definido", rotulo_conflito="IMPOSTO"
+        )
+        self._simbolo_atual.imposto_regressivo = True
 
     # ------------------------------------------------------------------
     # Comandos
     # ------------------------------------------------------------------
-    def _visitar_comando(self, no):
-        identificador = _texto(no.children[0])
-        # Lanca InvestimentoNaoDeclaradoError caso o simbolo nao exista.
+    def imprimir_resumo(self, tree):
+        identificador = _texto(tree.children[0])
         self.tabela.buscar(identificador)
+
+    def gerar_grafico(self, tree):
+        for token in tree.children:
+            self.tabela.buscar(_texto(token))
+
+    def comparar_grafico(self, tree):
+        for token in tree.children:
+            self.tabela.buscar(_texto(token))
