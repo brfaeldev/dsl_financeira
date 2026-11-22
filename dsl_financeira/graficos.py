@@ -6,6 +6,7 @@ Encapsula a geracao de graficos de evolucao patrimonial em PNG via Matplotlib
 via Plotly.js.
 """
 
+import html
 import json
 import sys
 
@@ -164,11 +165,14 @@ def salvar_grafico_interativo_html(series_por_simbolo, titulo, caminho_arquivo):
         "hovermode": "x unified",
         "template": "plotly_white",
     }
+    titulo_seguro = html.escape(str(titulo))
+    traces_json = json.dumps(traces, ensure_ascii=False).replace("</", "<\\/")
+    layout_json = json.dumps(layout, ensure_ascii=False).replace("</", "<\\/")
     conteudo_html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8" />
-    <title>{titulo}</title>
+    <title>{titulo_seguro}</title>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
     <style>
         body {{ font-family: system-ui, -apple-system, sans-serif; margin: 24px; background: #f8fafc; }}
@@ -178,8 +182,8 @@ def salvar_grafico_interativo_html(series_por_simbolo, titulo, caminho_arquivo):
 <body>
     <div id="grafico"></div>
     <script>
-        const traces = {json.dumps(traces, ensure_ascii=False)};
-        const layout = {json.dumps(layout, ensure_ascii=False)};
+        const traces = {traces_json};
+        const layout = {layout_json};
         Plotly.newPlot('grafico', traces, layout, {{responsive: true}});
     </script>
 </body>

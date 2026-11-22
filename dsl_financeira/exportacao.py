@@ -19,6 +19,8 @@ CAMPOS_CSV_PADRAO = [
     "imposto_renda",
     "patrimonio_liquido",
     "patrimonio_liquido_real",
+    "total_resgatado_bruto",
+    "custo_administracao",
 ]
 
 
@@ -87,6 +89,11 @@ def salvar_json_evolucao(itens_simulacao, caminho_arquivo):
                     "valor_final_liquido_real": round(
                         resultado.valor_final_liquido_real, 2
                     ),
+                    "total_resgatado_bruto": round(resultado.total_resgatado, 2),
+                    "total_resgatado_liquido": round(
+                        resultado.total_resgatado_liquido, 2
+                    ),
+                    "custo_administracao": round(resultado.custo_administracao, 2),
                 },
                 "evolucao_mensal": [
                     {
@@ -100,6 +107,10 @@ def salvar_json_evolucao(itens_simulacao, caminho_arquivo):
                         "patrimonio_liquido_real": round(
                             r["patrimonio_liquido_real"], 2
                         ),
+                        "total_resgatado_bruto": round(
+                            r["total_resgatado_bruto"], 2
+                        ),
+                        "custo_administracao": round(r["custo_administracao"], 2),
                     }
                     for r in registros
                 ],
@@ -113,7 +124,8 @@ def salvar_json_evolucao(itens_simulacao, caminho_arquivo):
 def salvar_relatorio_markdown(resultados_por_simbolo, artefatos_gerados, caminho_arquivo):
     """Gera e salva o relatorio executivo consolidado em formato Markdown."""
     melhor_liquido = max(
-        resultados_por_simbolo, key=lambda item: item[1].valor_final_liquido
+        resultados_por_simbolo,
+        key=lambda item: item[1].patrimonio_liquido_total,
     )
 
     linhas = [

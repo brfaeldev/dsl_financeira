@@ -42,6 +42,17 @@ def _criar_arg_parser():
     return parser
 
 
+def _remover_comentario_linha(linha):
+    """Remove comentario iniciado por '#' fora de literais entre aspas duplas."""
+    em_aspas = False
+    for idx, ch in enumerate(linha):
+        if ch == '"':
+            em_aspas = not em_aspas
+        elif ch == "#" and not em_aspas:
+            return linha[:idx].strip()
+    return linha.strip()
+
+
 def iniciar_repl(diretorio_saida="output", entrada=None, saida=None, erro_saida=None):
     """Executa o Read-Eval-Print Loop (REPL) da DSL Financeira."""
     stream_in = entrada if entrada is not None else sys.stdin
@@ -65,19 +76,25 @@ def iniciar_repl(diretorio_saida="output", entrada=None, saida=None, erro_saida=
         if not linha:
             break
 
-        texto = linha.strip()
-        if not texto or texto.startswith("#"):
+        texto = _remover_comentario_linha(linha)
+        if not texto:
             continue
 
         comando_upper = texto.upper()
-        if not em_bloco and comando_upper in ("SAIR", "EXIT", "QUIT"):
+        if comando_upper in ("SAIR", "EXIT", "QUIT"):
             break
 
         if not em_bloco and comando_upper == "LISTAR":
+            indices = analisador.tabela.listar_indices()
             simbolos = analisador.tabela.listar()
-            if not simbolos:
+            if not indices and not simbolos:
                 print("Nenhum investimento declarado.", file=stream_out)
             else:
+                for nome_ind, taxa_ind in indices.items():
+                    print(
+                        f"- [INDICE] {nome_ind} (r={taxa_ind * 100:.4f}% a.m.)",
+                        file=stream_out,
+                    )
                 for s in simbolos:
                     print(
                         f"- {s.identificador} (P={s.valor_inicial}, PMT={s.aporte}, "
@@ -86,7 +103,11 @@ def iniciar_repl(diretorio_saida="output", entrada=None, saida=None, erro_saida=
                     )
             continue
 
-        if not em_bloco and comando_upper.startswith("INVESTIMENTO ") and not comando_upper.endswith(" FIM"):
+        if (
+            not em_bloco
+            and comando_upper.startswith("INVESTIMENTO ")
+            and not comando_upper.endswith(" FIM")
+        ):
             em_bloco = True
             buffer_bloco = [linha]
             continue

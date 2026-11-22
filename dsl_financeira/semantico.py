@@ -20,6 +20,9 @@ from .motor import validar_viabilidade_resgates
 from .parser import extrair_texto_string as _texto
 from .tabela_simbolos import TabelaSimbolos, aliquota_regressiva_ir
 
+MAX_PERIODO_MESES = 12000
+MAX_TAXA_PERCENTUAL = 100000.0
+
 
 def _posicao(no):
     """Extrai (linha, coluna) de um no Tree (via meta) ou Token folha do Lark."""
@@ -86,12 +89,12 @@ class AnalisadorSemantico(Interpreter):
             )
         valor = float(tree.children[1])
         unidade = tree.children[2]
-        if valor < 0:
+        if valor < 0 or valor > MAX_TAXA_PERCENTUAL:
             raise ValorForaDoDominioError(
                 identificador,
                 "INDICE",
                 valor,
-                "A taxa do indice nao pode ser negativa.",
+                f"A taxa do indice deve estar entre 0 e {MAX_TAXA_PERCENTUAL:g} porcento.",
                 linha=linha,
                 coluna=coluna,
             )
@@ -173,10 +176,22 @@ class AnalisadorSemantico(Interpreter):
 
             # A aliquota regressiva ou de come-cotas depende do prazo final (n),
             # por isso e resolvida ao encerrar a leitura de todos os parametros do bloco.
-            if simbolo.imposto_come_cotas:
-                simbolo.imposto = 0.20 if simbolo.periodo <= 12 else 0.15
-            elif simbolo.imposto_regressivo:
-                simbolo.imposto = aliquota_regressiva_ir(simbolo.periodo)
+            if simbolo.imposto_come_cotas or simbolo.imposto_regressivo:
+                simbolo.imposto = simbolo.aliquota_para_mes(simbolo.periodo)
+
+            # Previne OverflowError numerico em combinacoes extremas de taxa e periodo
+            try:
+                _ = (1.0 + simbolo.taxa) ** simbolo.periodo
+                _ = (1.0 + simbolo.inflacao) ** simbolo.periodo
+            except OverflowError as exc:
+                raise ValorForaDoDominioError(
+                    identificador,
+                    "TAXA / PERIODO",
+                    simbolo.periodo,
+                    "A combinacao de taxa e periodo excede o limite numerico de representacao.",
+                    linha=linha,
+                    coluna=coluna,
+                ) from exc
 
             # Verifica se algum resgate parcial excede o saldo disponivel no mes
             # (utilizando o motor real para contemplar inclusive descontos de come-cotas)
@@ -271,8 +286,18 @@ class AnalisadorSemantico(Interpreter):
                 linha=linha,
                 coluna=coluna,
             )
+        periodo_meses = _converter_periodo_para_meses(prazo, unidade)
+        if periodo_meses > MAX_PERIODO_MESES:
+            raise ValorForaDoDominioError(
+                simbolo.identificador,
+                f"APORTE ... {unidade}",
+                prazo,
+                f"O periodo nao pode exceder {MAX_PERIODO_MESES} meses (1000 anos).",
+                linha=linha,
+                coluna=coluna,
+            )
         simbolo.aporte = valor
-        simbolo.periodo = _converter_periodo_para_meses(prazo, unidade)
+        simbolo.periodo = periodo_meses
 
     def aporte_extra(self, tree):
         """Valida e agenda um aporte esporadico (APORTE_EXTRA) em um mes especifico."""
@@ -336,7 +361,17 @@ class AnalisadorSemantico(Interpreter):
                 linha=linha,
                 coluna=coluna,
             )
-        simbolo.periodo = _converter_periodo_para_meses(prazo, unidade)
+        periodo_meses = _converter_periodo_para_meses(prazo, unidade)
+        if periodo_meses > MAX_PERIODO_MESES:
+            raise ValorForaDoDominioError(
+                simbolo.identificador,
+                f"PERIODO ... {unidade}",
+                prazo,
+                f"O periodo nao pode exceder {MAX_PERIODO_MESES} meses (1000 anos).",
+                linha=linha,
+                coluna=coluna,
+            )
+        simbolo.periodo = periodo_meses
 
     def taxa(self, tree):
         """Valida e converte a taxa de juros prefixada (AO_MES ou AO_ANO) para base mensal."""
@@ -354,12 +389,12 @@ class AnalisadorSemantico(Interpreter):
         linha, coluna = _posicao(tree)
         valor = float(tree.children[0])
         unidade = tree.children[1]
-        if valor < 0:
+        if valor < 0 or valor > MAX_TAXA_PERCENTUAL:
             raise ValorForaDoDominioError(
                 simbolo.identificador,
                 "TAXA",
                 valor,
-                "A taxa de juros nao pode ser negativa.",
+                f"A taxa de juros deve estar entre 0 e {MAX_TAXA_PERCENTUAL:g} porcento.",
                 linha=linha,
                 coluna=coluna,
             )
@@ -476,12 +511,12 @@ class AnalisadorSemantico(Interpreter):
         linha, coluna = _posicao(tree)
         valor = float(tree.children[0])
         unidade = tree.children[1]
-        if valor < 0:
+        if valor < 0 or valor > MAX_TAXA_PERCENTUAL:
             raise ValorForaDoDominioError(
                 simbolo.identificador,
                 "INFLACAO",
                 valor,
-                "A taxa de inflacao nao pode ser negativa.",
+                f"A taxa de inflacao deve estar entre 0 e {MAX_TAXA_PERCENTUAL:g} porcento.",
                 linha=linha,
                 coluna=coluna,
             )

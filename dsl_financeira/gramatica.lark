@@ -112,7 +112,7 @@ simular_renda: "SIMULAR" "RENDA" STRING "RETIRADA" numero UNIDADE_TAXA
 // dominio (ValorForaDoDominioError).
 UNIDADE_PERIODO: "MESES" | "ANOS"
 UNIDADE_TAXA: "AO_MES" | "AO_ANO"
-STRING: /"[^"]*"/
+STRING: /"[^"\r\n]*"/
 NUMBER: /-?[0-9]+\.[0-9]+/
 INT: /-?[0-9]+/
 

@@ -215,6 +215,21 @@ class TestSimulacaoFinanceira(unittest.TestCase):
         self.assertEqual(res.total_resgatado, 1000.00)
         self.assertGreater(res.valor_final_liquido, 6000.00)
 
+        # Verifica ausencia de dupla contagem de IR de resgate no rendimento bruto
+        codigo_resgate_total = """
+        INVESTIMENTO "ResgateTotal"
+            VALOR_INICIAL 1000.00
+            PERIODO 1 MESES
+            RESGATE 1100.00 NO_MES 1
+            TAXA 10.0 PORCENTO AO_MES
+            IMPOSTO 15.0 PORCENTO
+        FIM
+        """
+        res_total = Resultado(executar(codigo_resgate_total).buscar("ResgateTotal"))
+        self.assertAlmostEqual(res_total.rendimento_bruto, 100.00, places=6)
+        self.assertAlmostEqual(res_total.imposto_renda, 15.00, places=6)
+        self.assertAlmostEqual(res_total.total_resgatado_liquido, 1085.00, places=6)
+
     def test_taxa_administracao_come_cotas_e_ir_por_safra(self):
         """Valida TAXA_ADMINISTRACAO, IMPOSTO COME_COTAS e IMPOSTO REGRESSIVO POR_SAFRA."""
         codigo = """
@@ -274,6 +289,20 @@ class TestSimulacaoFinanceira(unittest.TestCase):
         self.assertEqual(res_perpetua["meses_duracao"], math.inf)
         self.assertFalse(res_finita["perpetua"])
         self.assertGreater(res_finita["meses_duracao"], 20)
+
+        # Verifica fronteira do ultimo mes quando saldo + juros do mes cobrem a retirada
+        codigo_borda = """
+        INVESTIMENTO "BordaUsufruto"
+            VALOR_INICIAL 995.00
+            PERIODO 1 MESES
+            TAXA 1.0 PORCENTO AO_MES
+            IMPOSTO 0.0 PORCENTO
+        FIM
+        """
+        sim_borda = executar(codigo_borda).buscar("BordaUsufruto")
+        # Patrimonio final no mes 1 = 1004.95; com +1% no 1o mes de usufruto = 1015.00 >= 1005.00
+        dados_borda = Interpretador.calcular_simulacao_renda(sim_borda, 1005.00)
+        self.assertEqual(dados_borda["meses_duracao"], 1)
 
 
 if __name__ == "__main__":

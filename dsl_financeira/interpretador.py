@@ -8,6 +8,7 @@ especializados de simulacao financeira (`motor.py`), renderizacao grafica
 """
 
 import os
+import re
 
 from lark.visitors import Interpreter
 
@@ -81,13 +82,14 @@ class Interpretador(Interpreter):
     ):
         """Resolve o caminho do arquivo de saida prevenindo colisao entre identificadores distintos."""
         os.makedirs(self.diretorio_saida, exist_ok=True)
-        nome_arquivo = f"{prefixo}_{sufixo_base}.{extensao}"
+        base = f"{prefixo}_{sufixo_base}" if prefixo else sufixo_base
+        nome_arquivo = f"{base}.{extensao}"
         contador = 2
         while (
             nome_arquivo in self._arquivos_registrados
             and self._arquivos_registrados[nome_arquivo] != chave_origem
         ):
-            nome_arquivo = f"{prefixo}_{sufixo_base}_{contador}.{extensao}"
+            nome_arquivo = f"{base}_{contador}.{extensao}"
             contador += 1
         self._arquivos_registrados[nome_arquivo] = chave_origem
         caminho = os.path.join(self.diretorio_saida, nome_arquivo)
@@ -244,17 +246,23 @@ class Interpretador(Interpreter):
         else:
             simbolos = self.tabela.listar()
 
-        os.makedirs(self.diretorio_saida, exist_ok=True)
-        nome_base = os.path.basename(nome_entrada)
-        if not nome_base.lower().endswith(".md"):
-            nome_base = f"{_sanitizar_nome_arquivo(nome_base)}.md"
-        caminho = os.path.join(self.diretorio_saida, nome_base)
+        nome_limpo = re.sub(r"^(?:\.+[\\/]+)+", "", nome_entrada).strip("/\\.")
+        if nome_limpo.lower().endswith(".md"):
+            stem = nome_limpo[:-3]
+        else:
+            stem = nome_limpo
+        stem_seguro = _sanitizar_nome_arquivo(stem) if stem.strip() else "relatorio"
+
+        artefatos_anteriores = list(self.artefatos_gerados)
+        caminho = self._resolver_caminho_saida(
+            None,
+            stem_seguro,
+            chave_origem=("relatorio", nome_entrada),
+            extensao="md",
+        )
 
         resultados = [(s, Resultado(s)) for s in simbolos]
-        salvar_relatorio_markdown(resultados, self.artefatos_gerados, caminho)
-
-        if caminho not in self.artefatos_gerados:
-            self.artefatos_gerados.append(caminho)
+        salvar_relatorio_markdown(resultados, artefatos_anteriores, caminho)
         print(f"Relatorio consolidado gerado em: {caminho}")
         return caminho
 

@@ -47,7 +47,8 @@ def simular_serie_detalhada(simbolo, resgates_com_posicao=None):
 
     total_investido_acumulado = simbolo.valor_inicial
     total_resgatado_bruto = 0.0
-    ir_pago_acumulado = 0.0
+    ir_resgates_acumulado = 0.0
+    ir_come_cotas_acumulado = 0.0
     custo_adm_acumulado = 0.0
 
     # Aliquota semestral de come-cotas (20% para fundos de curto prazo <= 12m, 15% longo prazo)
@@ -114,7 +115,7 @@ def simular_serie_detalhada(simbolo, resgates_com_posicao=None):
                     if safra[2] > 1e-12:
                         novas_safras.append(safra)
                 safras = novas_safras
-                ir_pago_acumulado += ir_resgate
+                ir_resgates_acumulado += ir_resgate
                 total_resgatado_bruto += valor_resgate
 
             # 4. Regime Come-Cotas semestral (meses 6, 12, 18, ...)
@@ -126,7 +127,7 @@ def simular_serie_detalhada(simbolo, resgates_com_posicao=None):
                         safra[2] -= ir_cc
                         # Apos a antecipacao semestral, o novo saldo passa a ser a base ja tributada
                         safra[1] = safra[2]
-                        ir_pago_acumulado += ir_cc
+                        ir_come_cotas_acumulado += ir_cc
 
         saldo_bruto = sum(s[2] for s in safras)
         capital_remanescente = sum(s[1] for s in safras)
@@ -152,14 +153,19 @@ def simular_serie_detalhada(simbolo, resgates_com_posicao=None):
         fator_inflacao = (1.0 + simbolo.inflacao) ** mes
         saldo_liquido_real = saldo_liquido / fator_inflacao
 
-        # Rendimento bruto total gerado ate o mes (incluindo resgates e IR ja recolhido em come-cotas)
+        # Rendimento bruto total gerado ate o mes:
+        # total_resgatado_bruto ja embute a parcela de IR retida nos resgates
+        # (ir_resgates_acumulado), enquanto ir_come_cotas_acumulado foi deduzido
+        # diretamente do saldo das safras.
         rendimento_bruto_total = (
             saldo_bruto
             + total_resgatado_bruto
-            + ir_pago_acumulado
+            + ir_come_cotas_acumulado
             - total_investido_acumulado
         )
+        ir_pago_acumulado = ir_resgates_acumulado + ir_come_cotas_acumulado
         imposto_total_ate_mes = ir_pago_acumulado + ir_latente
+        total_resgatado_liquido = total_resgatado_bruto - ir_resgates_acumulado
 
         registros.append(
             {
@@ -172,6 +178,7 @@ def simular_serie_detalhada(simbolo, resgates_com_posicao=None):
                 "patrimonio_liquido": saldo_liquido,
                 "patrimonio_liquido_real": saldo_liquido_real,
                 "total_resgatado_bruto": total_resgatado_bruto,
+                "total_resgatado_liquido": total_resgatado_liquido,
                 "custo_administracao": custo_adm_acumulado,
             }
         )
@@ -204,6 +211,7 @@ class Resultado:
         t = simbolo.imposto
 
         self.total_resgatado = 0.0
+        self.total_resgatado_liquido = 0.0
         self.custo_administracao = 0.0
 
         if not simbolo.usa_simulacao_detalhada:
@@ -229,8 +237,12 @@ class Resultado:
             self.imposto_renda = ultimo["imposto_renda"]
             self.valor_final_liquido = ultimo["patrimonio_liquido"]
             self.total_resgatado = ultimo["total_resgatado_bruto"]
+            self.total_resgatado_liquido = ultimo["total_resgatado_liquido"]
             self.custo_administracao = ultimo["custo_administracao"]
 
+        self.patrimonio_liquido_total = (
+            self.valor_final_liquido + self.total_resgatado_liquido
+        )
         # Deflacao pelo indice de inflacao acumulado no periodo: V_real = V_nominal / (1 + i)^n
         fator_inflacao = (1.0 + simbolo.inflacao) ** n
         self.valor_final_liquido_real = self.valor_final_liquido / fator_inflacao
@@ -245,11 +257,10 @@ def calcular_simulacao_renda(simbolo, retirada_mensal):
         else resultado.valor_final_liquido
     )
 
-    # Taxa liquida mensal na fase de usufruto (descontando IR sobre rendimentos e taxa de adm)
+    # Taxa liquida mensal na fase de usufruto (descontando taxa de adm e IR sobre rendimentos)
     aliquota_usufruto = simbolo.aliquota_para_mes(max(1, simbolo.periodo))
-    taxa_liquida_nominal = max(
-        0.0, simbolo.taxa * (1.0 - aliquota_usufruto) - simbolo.taxa_administracao
-    )
+    taxa_apos_adm = (1.0 + simbolo.taxa) * (1.0 - simbolo.taxa_administracao) - 1.0
+    taxa_liquida_nominal = max(0.0, taxa_apos_adm * (1.0 - aliquota_usufruto))
     if simbolo.inflacao > 0:
         taxa_mensal_usufruto = max(
             0.0,
@@ -275,12 +286,16 @@ def calcular_simulacao_renda(simbolo, retirada_mensal):
         perpetua = False
         saldo = patrimonio_inicial_usufruto
         meses_duracao = 0
-        # Limite de seguranca de 12000 meses (1000 anos) para evitar laco infinito
-        while saldo >= retirada_mensal and meses_duracao < 12000:
-            saldo = saldo * (1.0 + taxa_mensal_usufruto) - retirada_mensal
+        # Limite de seguranca de 12000 meses (1000 anos) para evitar laco infinito;
+        # em cada mes o saldo rende juros antes da retirada de fim de mes.
+        while (
+            saldo * (1.0 + taxa_mensal_usufruto) >= retirada_mensal - 1e-9
+            and meses_duracao < 12000
+        ):
+            saldo = max(0.0, saldo * (1.0 + taxa_mensal_usufruto) - retirada_mensal)
             meses_duracao += 1
             if meses_duracao <= 1200:
-                curva_usufruto.append(max(0.0, saldo))
+                curva_usufruto.append(saldo)
         if meses_duracao >= 12000:
             perpetua = True
             meses_duracao = math.inf

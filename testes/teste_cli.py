@@ -71,11 +71,11 @@ class TestCLI(unittest.TestCase):
     def test_repl_interativo_e_gramatica_vscode(self):
         sessao_repl = (
             'INDICE "CDI" 1.0 PORCENTO AO_MES\n'
-            'INVESTIMENTO "TesteREPL"\n'
+            'INVESTIMENTO "TesteREPL" # comentario no inicio do bloco\n'
             "    VALOR_INICIAL 1000.00\n"
             "    PERIODO 12 MESES\n"
             '    TAXA 100.0 PORCENTO DO "CDI"\n'
-            "FIM\n"
+            "FIM # comentario na linha de fechamento\n"
             "LISTAR\n"
             'IMPRIMIR RESUMO "TesteREPL"\n'
             "SAIR\n"
@@ -85,6 +85,7 @@ class TestCLI(unittest.TestCase):
         erro = io.StringIO()
         codigo = iniciar_repl(entrada=entrada, saida=saida, erro_saida=erro)
         self.assertEqual(codigo, 0)
+        self.assertIn("[INDICE] CDI", saida.getvalue())
         self.assertIn("TesteREPL", saida.getvalue())
         self.assertIn("RESUMO DO INVESTIMENTO: TesteREPL", saida.getvalue())
 
@@ -127,6 +128,14 @@ class TestCLI(unittest.TestCase):
         res_erro = compilar_e_simular_dsl('IMPRIMIR RESUMO "NaoDeclarado"')
         self.assertFalse(res_erro["sucesso"])
         self.assertEqual(res_erro["tipo_erro"], "Semantico")
+
+        bloco_sem_aporte = gerar_bloco_investimento_dsl(
+            nome="ZeroAporte",
+            valor_inicial=0.0,
+            usar_aporte=True,
+            aporte_mensal=0.0,
+        )
+        self.assertIn("VALOR_INICIAL 0.00", bloco_sem_aporte)
 
 
 if __name__ == "__main__":

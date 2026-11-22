@@ -222,6 +222,27 @@ class TestAnaliseSemantica(unittest.TestCase):
                 """
             )
 
+        with self.assertRaises(ValorForaDoDominioError):
+            executar(
+                """
+                INVESTIMENTO "PeriodoExcessivo"
+                    VALOR_INICIAL 1000.00
+                    PERIODO 2000 ANOS
+                FIM
+                """
+            )
+
+        with self.assertRaises(ValorForaDoDominioError):
+            executar(
+                """
+                INVESTIMENTO "TaxaExcessiva"
+                    VALOR_INICIAL 1000.00
+                    PERIODO 12 MESES
+                    TAXA 200000.0 PORCENTO AO_MES
+                FIM
+                """
+            )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

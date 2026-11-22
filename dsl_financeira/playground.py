@@ -72,11 +72,12 @@ def gerar_bloco_investimento_dsl(
     """Monta um bloco INVESTIMENTO ... FIM e seu comando IMPRIMIR RESUMO na sintaxe da DSL."""
     nome_limpo = nome.strip().replace('"', "") or "Meu_Investimento"
     linhas = [f'INVESTIMENTO "{nome_limpo}"']
+    tem_aporte_positivo = bool(usar_aporte and aporte_mensal > 0)
 
-    if valor_inicial > 0 or not usar_aporte:
+    if valor_inicial > 0 or not tem_aporte_positivo:
         linhas.append(f"    VALOR_INICIAL {float(valor_inicial):.2f}")
 
-    if usar_aporte and aporte_mensal > 0:
+    if tem_aporte_positivo:
         linhas.append(
             f"    APORTE {float(aporte_mensal):.2f} POR {int(prazo)} {unidade_prazo}"
         )
@@ -160,8 +161,9 @@ def compilar_e_simular_dsl(codigo):
             interpretador = Interpretador(tabela, diretorio_saida=tmpdir)
             with contextlib.redirect_stdout(buffer_console):
                 interpretador.executar(ast)
+            saida_texto = buffer_console.getvalue().replace(tmpdir, "output")
 
-        resposta["console_output"] = buffer_console.getvalue()
+        resposta["console_output"] = saida_texto
 
         resultados = []
         for simbolo in tabela.listar():
@@ -419,7 +421,7 @@ def _renderizar_aba_dashboard(st, resultados):
         return
 
     melhor_sim, melhor_res, _ = max(
-        resultados, key=lambda item: item[1].valor_final_liquido
+        resultados, key=lambda item: item[1].patrimonio_liquido_total
     )
     st.success(
         f"🏆 **Melhor Cenário Líquido**: `{melhor_sim.identificador}` com patrimônio líquido final de "
@@ -468,43 +470,45 @@ def _renderizar_aba_dashboard(st, resultados):
     st.subheader("📈 Curvas de Crescimento Patrimonial")
     plt = _carregar_pyplot()
     fig, ax = plt.subplots(figsize=(10, 5))
-    for simbolo, _, serie in resultados:
-        meses = [r["mes"] for r in serie]
-        liq = [r["patrimonio_liquido"] for r in serie]
-        bruto = [r["patrimonio_bruto"] for r in serie]
-        linha = ax.plot(
-            meses,
-            liq,
-            linewidth=2.2,
-            label=f"{simbolo.identificador} (Líquido)",
-        )
-        cor = linha[0].get_color()
-        ax.plot(
-            meses,
-            bruto,
-            linestyle="--",
-            alpha=0.55,
-            color=cor,
-            label=f"{simbolo.identificador} (Bruto)",
-        )
-        if simbolo.inflacao > 0:
-            real = [r["patrimonio_liquido_real"] for r in serie]
+    try:
+        for simbolo, _, serie in resultados:
+            meses = [r["mes"] for r in serie]
+            liq = [r["patrimonio_liquido"] for r in serie]
+            bruto = [r["patrimonio_bruto"] for r in serie]
+            linha = ax.plot(
+                meses,
+                liq,
+                linewidth=2.2,
+                label=f"{simbolo.identificador} (Líquido)",
+            )
+            cor = linha[0].get_color()
             ax.plot(
                 meses,
-                real,
-                linestyle=":",
-                alpha=0.9,
+                bruto,
+                linestyle="--",
+                alpha=0.55,
                 color=cor,
-                label=f"{simbolo.identificador} (Líquido Real)",
+                label=f"{simbolo.identificador} (Bruto)",
             )
-    ax.set_title("Evolução Patrimonial Mês a Mês")
-    ax.set_xlabel("Meses")
-    ax.set_ylabel("Valor (R$)")
-    ax.grid(True, alpha=0.35)
-    ax.legend()
-    fig.tight_layout()
-    st.pyplot(fig)
-    plt.close(fig)
+            if simbolo.inflacao > 0:
+                real = [r["patrimonio_liquido_real"] for r in serie]
+                ax.plot(
+                    meses,
+                    real,
+                    linestyle=":",
+                    alpha=0.9,
+                    color=cor,
+                    label=f"{simbolo.identificador} (Líquido Real)",
+                )
+        ax.set_title("Evolução Patrimonial Mês a Mês")
+        ax.set_xlabel("Meses")
+        ax.set_ylabel("Valor (R$)")
+        ax.grid(True, alpha=0.35)
+        ax.legend()
+        fig.tight_layout()
+        st.pyplot(fig)
+    finally:
+        plt.close(fig)
 
     st.subheader("📑 Série Temporal Mês a Mês e Exportação")
     nomes_inv = [s.identificador for s, _, _ in resultados]

@@ -160,6 +160,33 @@ class TestGeracaoGraficos(unittest.TestCase):
                 texto_md = f.read()
             self.assertIn("Relatorio Consolidado de Simulacao Financeira", texto_md)
 
+    def test_sanitizacao_relatorio_com_extensao_md_e_escape_html(self):
+        codigo = """
+        INVESTIMENTO "CDB <Teste>"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+            TAXA 1.0 PORCENTO AO_MES
+        FIM
+        GERAR GRAFICO_INTERATIVO "CDB <Teste>"
+        GERAR RELATORIO "relatorio: cenario?.md"
+        GERAR RELATORIO "relatorio/cenario?.md"
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                executar(codigo, diretorio_saida=tmpdir)
+
+            arq_rel1 = os.path.join(tmpdir, "relatorio_cenario.md")
+            arq_rel2 = os.path.join(tmpdir, "relatorio_cenario_2.md")
+            arq_html = os.path.join(tmpdir, "grafico_interativo_CDB_Teste.html")
+            self.assertTrue(os.path.exists(arq_rel1))
+            self.assertTrue(os.path.exists(arq_rel2))
+            self.assertTrue(os.path.exists(arq_html))
+
+            with open(arq_html, "r", encoding="utf-8") as f:
+                html_gerado = f.read()
+            self.assertIn("&lt;Teste&gt;", html_gerado)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

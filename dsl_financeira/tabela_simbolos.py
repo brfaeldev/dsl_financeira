@@ -65,10 +65,13 @@ class Investimento:
 
     def aliquota_para_mes(self, mes):
         """Retorna a aliquota de IR aplicavel no mes informado."""
-        if self.imposto_regressivo:
+        if self.imposto_regressivo or self.imposto_come_cotas:
             # No mes 0 (instante inicial) utiliza-se max(1, mes) para manter a faixa
             # inicial de curto prazo (22,5%) na simulacao mes a mes dos graficos.
-            return aliquota_regressiva_ir(max(1, mes))
+            mes_efetivo = max(1, mes)
+            if self.imposto_come_cotas and self.periodo <= 12:
+                return 0.225 if mes_efetivo <= 6 else 0.20
+            return aliquota_regressiva_ir(mes_efetivo)
         return self.imposto
 
 
