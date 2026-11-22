@@ -25,6 +25,8 @@ def main(argv=None):
         print(f"Erro ao abrir o arquivo: {erro}")
         return 1
 
+    # Tratamento em tres camadas para distinguir falhas de dominio (Semantico),
+    # falhas gramaticais/lexicas (LarkError) e erros inesperados de runtime.
     try:
         executar(codigo)
     except ErroSemantico as erro:

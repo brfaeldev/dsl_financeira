@@ -14,6 +14,7 @@ _CAMINHO_GRAMATICA = os.path.join(os.path.dirname(__file__), "gramatica.lark")
 
 @functools.lru_cache(maxsize=1)
 def carregar_gramatica():
+    """Le o arquivo EBNF (.lark) do disco uma unica vez e mantem em memoria."""
     with open(_CAMINHO_GRAMATICA, "r", encoding="utf-8") as arquivo:
         return arquivo.read()
 
@@ -22,13 +23,15 @@ def carregar_gramatica():
 def criar_parser(parser="lalr"):
     """Cria (e armazena em cache) o parser da DSL.
 
-    Suporta os geradores de parsers eficientes da Lark: LALR(1) e Earley,
+    Suporta os geradores de parsers eficientes da Lark: LALR(1) (complexidade
+    linear O(n) para gramaticas livres de contexto sem ambiguidade) e Earley,
     propagando metadados de linha e coluna para os nos da AST.
     """
     return Lark(
         carregar_gramatica(),
         start="programa",
         parser=parser,
+        # Propaga line/column dos tokens folha para tree.meta nos nos internos da AST
         propagate_positions=True,
     )
 

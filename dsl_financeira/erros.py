@@ -2,7 +2,11 @@
 
 
 class ErroSemantico(Exception):
-    """Classe base para os erros de analise semantica da DSL."""
+    """Classe base para os erros de analise semantica da DSL.
+
+    Centraliza a captura de erros semanticos no CLI e formata opcionalmente as
+    coordenadas (linha e coluna) extraidas dos nos da AST do Lark.
+    """
 
     def __init__(self, mensagem, linha=None, coluna=None):
         self.linha = linha

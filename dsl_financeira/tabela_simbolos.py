@@ -31,27 +31,36 @@ class Investimento:
 
     def __init__(self, identificador):
         self.identificador = identificador
-        self.valor_inicial = 0.0        # P
-        self.aporte = 0.0               # PMT
-        self.periodo = 0                # n (meses)
-        self.taxa = 0.0                 # r (decimal, ao mes)
-        self.imposto = 0.0              # t (decimal)
+        # Atributos financeiros inicializados com valores neutros; taxas e aliquotas
+        # sao armazenadas ja normalizadas na forma decimal (ex.: 0.8% -> 0.008).
+        self.valor_inicial = 0.0        # P: capital inicial aplicado no mes 0
+        self.aporte = 0.0               # PMT: aporte recorrente ao fim de cada mes
+        self.periodo = 0                # n: horizonte temporal em meses (obrigatorio > 0)
+        self.taxa = 0.0                 # r: taxa de juros compostos mensal (decimal)
+        self.imposto = 0.0              # t: aliquota final de IR sobre o rendimento (decimal)
         self.imposto_regressivo = False
 
     def aliquota_para_mes(self, mes):
         """Retorna a aliquota de IR aplicavel no mes informado."""
         if self.imposto_regressivo:
+            # No mes 0 (instante inicial) utiliza-se max(1, mes) para manter a faixa
+            # inicial de curto prazo (22,5%) na simulacao mes a mes dos graficos.
             return aliquota_regressiva_ir(max(1, mes))
         return self.imposto
 
 
 class TabelaSimbolos:
-    """Dicionario global de investimentos declarados no programa."""
+    """Dicionario global de investimentos declarados no programa.
+
+    Populada durante a Analise Semantica e consultada pelo Interpretador na
+    fase de execucao.
+    """
 
     def __init__(self):
         self._simbolos = {}
 
     def declarar(self, identificador, linha=None, coluna=None):
+        """Registra um novo identificador de investimento, impedindo redeclaracoes."""
         if identificador in self._simbolos:
             raise DeclaracaoDuplicadaError(
                 identificador, linha=linha, coluna=coluna
@@ -61,6 +70,7 @@ class TabelaSimbolos:
         return simbolo
 
     def buscar(self, identificador, linha=None, coluna=None):
+        """Recupera um investimento ja declarado ou lanca erro de simbolo inexistente."""
         if identificador not in self._simbolos:
             raise InvestimentoNaoDeclaradoError(
                 identificador, linha=linha, coluna=coluna

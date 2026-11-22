@@ -17,23 +17,29 @@ from .tabela_simbolos import TabelaSimbolos, aliquota_regressiva_ir
 
 
 def _texto(token):
-    """Remove as aspas de um token STRING."""
+    """Remove as aspas externas de um token literal STRING (ex.: '"CDB"' -> 'CDB')."""
     return str(token)[1:-1]
 
 
 def _posicao(no):
-    """Extrai (linha, coluna) de um Tree ou Token do Lark."""
+    """Extrai (linha, coluna) de um no Tree (via meta) ou Token folha do Lark."""
     if hasattr(no, "meta") and not getattr(no.meta, "empty", True):
         return getattr(no.meta, "line", None), getattr(no.meta, "column", None)
     return getattr(no, "line", None), getattr(no, "column", None)
 
 
 class AnalisadorSemantico(Interpreter):
-    """AST Visitor (Lark Interpreter) responsavel por alimentar a Tabela de Simbolos."""
+    """AST Visitor (Lark Interpreter) responsavel por alimentar a Tabela de Simbolos.
+
+    Diferente de lark.Visitor (bottom-up), a classe Interpreter percorre a AST
+    top-down, permitindo controlar o contexto do bloco INVESTIMENTO atual antes
+    de visitar seus parametros filhos.
+    """
 
     def __init__(self):
         super().__init__()
         self.tabela = TabelaSimbolos()
+        # Contexto temporario do bloco INVESTIMENTO sendo validado no momento
         self._simbolo_atual = None
         self._vistos_atual = set()
 
@@ -53,7 +59,11 @@ class AnalisadorSemantico(Interpreter):
         self._simbolo_atual = simbolo
         self._vistos_atual = set()
         try:
+            # Visita o no bloco_parametros, disparando os metodos de cada parametro
             self.visit(tree.children[1])
+
+            # Todo investimento precisa ter um horizonte temporal (> 0 meses),
+            # definido via PERIODO <n> MESES ou via APORTE <v> POR <n> MESES.
             if "periodo_definido" not in self._vistos_atual or simbolo.periodo <= 0:
                 raise ParametroObrigatorioError(
                     identificador,
@@ -61,13 +71,23 @@ class AnalisadorSemantico(Interpreter):
                     linha=linha,
                     coluna=coluna,
                 )
+
+            # A aliquota regressiva depende do prazo final (n), por isso e
+            # resolvida ao encerrar a leitura de todos os parametros do bloco.
             if simbolo.imposto_regressivo:
                 simbolo.imposto = aliquota_regressiva_ir(simbolo.periodo)
         finally:
+            # Garante limpeza do estado de bloco mesmo se uma excecao for lancada
             self._simbolo_atual = None
             self._vistos_atual = set()
 
     def _registrar_parametro(self, nome, tree, grupo=None, rotulo_conflito=None):
+        """Registra a ocorrencia de um parametro no bloco atual e impede duplicatas.
+
+        O argumento `grupo` permite bloquear parametros mutuamente exclusivos
+        (ex.: declarar APORTE ... POR <n> MESES e PERIODO <n> MESES juntos, ou
+        IMPOSTO <x> PORCENTO e IMPOSTO REGRESSIVO no mesmo investimento).
+        """
         identificador = self._simbolo_atual.identificador
         linha, coluna = _posicao(tree)
         if nome in self._vistos_atual:
@@ -192,9 +212,10 @@ class AnalisadorSemantico(Interpreter):
         self._simbolo_atual.imposto_regressivo = True
 
     # ------------------------------------------------------------------
-    # Comandos
+    # Comandos (validacao de escopo declare-before-use e argumentos)
     # ------------------------------------------------------------------
     def _validar_identificadores_comando(self, tree, nome_comando):
+        """Verifica se os investimentos referenciados existem e nao se repetem no comando."""
         vistos = set()
         for token in tree.children:
             identificador = _texto(token)

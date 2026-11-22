@@ -37,7 +37,11 @@ __all__ = [
 
 
 def executar(codigo):
-    """Executa o pipeline completo: Parser -> AST -> Semantico -> Execucao."""
+    """Executa o pipeline completo: Parser -> AST -> Semantico -> Execucao.
+
+    Retorna a `TabelaSimbolos` populada para permitir inspecao programatica
+    (por exemplo, na suite de testes automatizados).
+    """
     ast = analisar(codigo)
     tabela = AnalisadorSemantico().analisar(ast)
     Interpretador(tabela).executar(ast)

@@ -13,12 +13,17 @@
 //                     | "GERAR" "GRAFICO" STRING+
 //                     | "COMPARAR" "GRAFICO" STRING STRING+
 
+// Regra inicial: um script .dsl contem uma ou mais declaracoes e/ou comandos
 programa: (declaracao | comando)+
 
+// Bloco declarativo que registra um novo cenario de investimento na Tabela de Simbolos
 declaracao: "INVESTIMENTO" STRING bloco_parametros "FIM"
 
 bloco_parametros: parametro+
 
+// O prefixo '?' (inline rule do Lark) achata o no intermediario na AST, fazendo
+// a arvore expor diretamente a regra filha (ex.: valor_inicial, aporte, taxa)
+// para despacho automatico nos metodos do AST Visitor (Interpreter).
 ?parametro: valor_inicial
           | aporte
           | periodo
@@ -33,18 +38,25 @@ taxa: "TAXA" NUMBER "PORCENTO" "AO_MES"
 imposto: "IMPOSTO" NUMBER "PORCENTO"
 imposto_regressivo: "IMPOSTO" "REGRESSIVO"
 
+// Regras de acao executadas pelo Interpretador apos a validacao semantica
 ?comando: imprimir_resumo
         | gerar_grafico
         | comparar_grafico
 
 imprimir_resumo: "IMPRIMIR" "RESUMO" STRING
 gerar_grafico: "GERAR" "GRAFICO" STRING+
+// COMPARAR GRAFICO exige ao menos dois identificadores na propria gramatica
 comparar_grafico: "COMPARAR" "GRAFICO" STRING STRING+
 
+// Tokens lexicos:
+// NUMBER e INT aceitam sinal negativo opcional ('-?') no Lexer para que valores
+// negativos nao gerem erro de sintaxe obscuro, sendo capturados na Analise Semantica
+// com diagnostico especifico de dominio (ValorForaDoDominioError).
 STRING: /"[^"]*"/
 NUMBER: /-?[0-9]+(\.[0-9]+)?/
 INT: /-?[0-9]+/
 
+// Ignora espacos em branco, quebras de linha e comentarios iniciados por '#'
 %import common.WS
 %ignore WS
 %ignore /#[^\n]*/

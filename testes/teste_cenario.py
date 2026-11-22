@@ -52,6 +52,7 @@ class TestSimulacaoFinanceira(unittest.TestCase):
     """Valida os calculos matematicos e tributarios do motor de execucao."""
 
     def test_cenario_proposto_artigo(self):
+        """Valida o cenario base 'Aposentadoria' (Secao IV-A do artigo IEEE)."""
         tabela = executar(CENARIO_APOSENTADORIA)
         simbolo = tabela.buscar("Aposentadoria")
 
@@ -61,6 +62,9 @@ class TestSimulacaoFinanceira(unittest.TestCase):
         self.assertAlmostEqual(simbolo.taxa, 0.008, places=12)
         self.assertAlmostEqual(simbolo.imposto, 0.15, places=12)
 
+        # FV_inicial = 5000 * (1.008)^12 = 5501.69
+        # FV_aportes = 500 * ((1.008)^12 - 1) / 0.008 = 6271.17
+        # Rendimento Bruto = (5501.69 + 6271.17) - 11000 = 772.86
         resultado = Resultado(simbolo)
         self.assertEqual(round(resultado.total_investido, 2), 11000.00)
         self.assertEqual(round(resultado.rendimento_bruto, 2), 772.86)

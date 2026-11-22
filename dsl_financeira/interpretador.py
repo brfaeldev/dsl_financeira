@@ -23,20 +23,21 @@ from .semantico import _texto
 
 
 def _moeda(valor):
-    """Formata um numero no padrao monetario brasileiro."""
+    """Formata um numero no padrao monetario brasileiro (R$ 1.234,56)."""
     texto = f"{valor:,.2f}"
+    # Converte separador de milhar (',' -> '.') e decimal ('.' -> ',') usando '#' como pivo
     texto = texto.replace(",", "#").replace(".", ",").replace("#", ".")
     return f"R$ {texto}"
 
 
 def _sanitizar_nome_arquivo(identificador):
-    """Substitui espacos e caracteres invalidos de caminho por underscore."""
+    """Substitui espacos e caracteres invalidos de sistema de arquivos por underscore."""
     limpo = re.sub(r'[\\/:*?"<>|\s]+', "_", identificador.strip())
     return limpo.strip("_") or "investimento"
 
 
 class Resultado:
-    """Resultado consolidado da simulacao de um investimento."""
+    """Resultado consolidado da simulacao de um investimento (formulas fechadas)."""
 
     def __init__(self, simbolo):
         self.identificador = simbolo.identificador
@@ -46,6 +47,8 @@ class Resultado:
         r = simbolo.taxa
         t = simbolo.imposto
 
+        # Tratamento de caso limite (taxa zero) para evitar divisao por zero na
+        # formula do valor futuro da serie uniforme postecipada (anuidade).
         if r == 0:
             fv_aportes = PMT * n
         else:
@@ -55,6 +58,7 @@ class Resultado:
         self.total_investido = P + PMT * n
         self.valor_final_bruto = fv_inicial + fv_aportes
         self.rendimento_bruto = self.valor_final_bruto - self.total_investido
+        # O Imposto de Renda incide exclusivamente sobre o rendimento bruto auferido
         self.imposto_renda = self.rendimento_bruto * t
         self.valor_final_liquido = self.valor_final_bruto - self.imposto_renda
 
@@ -72,7 +76,7 @@ class Interpretador(Interpreter):
         self.visit(ast)
 
     def declaracao(self, tree):
-        """Declaracoes ja foram processadas na fase de Analise Semantica."""
+        """No-op na fase de execucao: declaracoes ja foram populadas na Tabela de Simbolos."""
         return None
 
     # ------------------------------------------------------------------
@@ -80,6 +84,12 @@ class Interpretador(Interpreter):
     # ------------------------------------------------------------------
     @staticmethod
     def _simular_evolucao(simbolo):
+        """Gera as series temporais (mes 0 ate n) para plotagem das curvas patrimoniais.
+
+        A recorrencia `saldo = saldo * (1 + r) + PMT` modela aportes postecipados
+        (ao final de cada mes), convergindo exatamente para o mesmo montante da
+        formula fechada da classe `Resultado` no mes `n`.
+        """
         meses = list(range(simbolo.periodo + 1))
         patrimonio_bruto = []
         patrimonio_liquido = []
@@ -91,6 +101,7 @@ class Interpretador(Interpreter):
                 saldo = saldo * (1 + simbolo.taxa) + simbolo.aporte
             total_investido_mes = simbolo.valor_inicial + simbolo.aporte * mes
             rendimento_mes = saldo - total_investido_mes
+            # Se IMPOSTO REGRESSIVO estiver ativo, a aliquota cai conforme o mes avanca
             aliquota = simbolo.aliquota_para_mes(mes)
             saldo_liquido = saldo - (rendimento_mes * aliquota)
 
@@ -120,11 +131,14 @@ class Interpretador(Interpreter):
     # ------------------------------------------------------------------
     def gerar_grafico(self, tree):
         identificadores = [_texto(t) for t in tree.children]
+        # Quando GERAR GRAFICO recebe multiplos identificadores, delega para a
+        # plotagem comparativa entre cenarios.
         if len(identificadores) > 1:
             return self.comparar_grafico(tree)
 
         identificador = identificadores[0]
         import matplotlib
+        # Backend 'Agg' permite renderizar arquivos PNG sem servidor grafico/GUI
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
@@ -166,6 +180,8 @@ class Interpretador(Interpreter):
             meses, patrimonio_bruto, patrimonio_liquido, _ = (
                 self._simular_evolucao(simbolo)
             )
+            # Plota a curva liquida em linha continua e reutiliza a mesma cor
+            # em linha tracejada para a curva bruta correspondente ao mesmo cenario.
             linha = plt.plot(
                 meses,
                 patrimonio_liquido,
