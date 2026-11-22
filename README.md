@@ -12,9 +12,11 @@ Codigo Source -> Parser -> AST -> Execucao
 
 1. **Front-End (Lexer e Parser)** — `dsl_financeira/parser.py` + `gramatica.lark`
    (biblioteca **Lark**, parser LALR(1); Earley tambem suportado).
-2. **Analise Semantica e Tabela de Simbolos** — `semantico.py` + `tabela_simbolos.py`.
-3. **Engine de Execucao (Interpretador)** — `interpretador.py` (AST Visitor,
-   juros compostos, deducoes fiscais, graficos com **Matplotlib**).
+2. **Analise Semantica e Tabela de Simbolos** — `semantico.py` + `tabela_simbolos.py`
+   (heranca nativa de `lark.visitors.Interpreter`).
+3. **Engine de Execucao (Interpretador)** — `interpretador.py` (AST Visitor via
+   `lark.visitors.Interpreter`, juros compostos, deducoes fiscais fixas ou pela
+   tabela regressiva de IR, e graficos individuais/comparativos com **Matplotlib**).
 
 ## Gramatica (EBNF)
 
@@ -24,10 +26,13 @@ declaracao        ::= "INVESTIMENTO" STRING bloco_parametros "FIM"
 bloco_parametros  ::= parametro+
 parametro         ::= "VALOR_INICIAL" NUMBER
                     | "APORTE" NUMBER "POR" INT "MESES"
+                    | "PERIODO" INT "MESES"
                     | "TAXA" NUMBER "PORCENTO" "AO_MES"
                     | "IMPOSTO" NUMBER "PORCENTO"
+                    | "IMPOSTO" "REGRESSIVO"
 comando           ::= "IMPRIMIR" "RESUMO" STRING
-                    | "GERAR" "GRAFICO" STRING
+                    | "GERAR" "GRAFICO" STRING+
+                    | "COMPARAR" "GRAFICO" STRING STRING+
 ```
 
 ## Tabela de Simbolos
@@ -39,13 +44,15 @@ comando           ::= "IMPRIMIR" "RESUMO" STRING
 | aporte | PMT | Aporte mensal |
 | periodo | n | Periodo em meses |
 | taxa | r | Taxa mensal (decimal) |
-| imposto | t | Aliquota de imposto (decimal) |
+| imposto | t | Aliquota de imposto (decimal, fixa ou regressiva) |
 
 ### Erros semanticos
 
 - `DeclaracaoDuplicadaError` — declaracao duplicada do mesmo investimento.
 - `InvestimentoNaoDeclaradoError` — referencia a investimento nao declarado.
 - `ValorForaDoDominioError` — valores numericos fora do dominio valido.
+- `ParametroDuplicadoError` — parametro repetido ou conflitante no mesmo bloco `INVESTIMENTO`.
+- `ParametroObrigatorioError` — ausencia de prazo definido (`PERIODO` ou `APORTE ... POR <n> MESES`).
 
 ## Instalacao
 
@@ -57,6 +64,7 @@ pip install -r requirements.txt
 
 ```bash
 python main.py exemplos/aposentadoria.dsl
+python main.py exemplos/comparacao_cenarios.dsl
 ```
 
 ## Testes
