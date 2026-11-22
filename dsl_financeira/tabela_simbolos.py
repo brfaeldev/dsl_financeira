@@ -51,14 +51,18 @@ class TabelaSimbolos:
     def __init__(self):
         self._simbolos = {}
 
-    def declarar(self, identificador):
+    def declarar(self, identificador, linha=None, coluna=None):
         if identificador in self._simbolos:
-            raise DeclaracaoDuplicadaError(identificador)
+            raise DeclaracaoDuplicadaError(
+                identificador, linha=linha, coluna=coluna
+            )
         simbolo = Investimento(identificador)
         self._simbolos[identificador] = simbolo
         return simbolo
 
-    def buscar(self, identificador):
+    def buscar(self, identificador, linha=None, coluna=None):
         if identificador not in self._simbolos:
-            raise InvestimentoNaoDeclaradoError(identificador)
+            raise InvestimentoNaoDeclaradoError(
+                identificador, linha=linha, coluna=coluna
+            )
         return self._simbolos[identificador]

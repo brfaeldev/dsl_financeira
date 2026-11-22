@@ -15,6 +15,7 @@ Modelo de calculo (conforme a fundamentacao teorica do trabalho):
 """
 
 import os
+import re
 
 from lark.visitors import Interpreter
 
@@ -26,6 +27,12 @@ def _moeda(valor):
     texto = f"{valor:,.2f}"
     texto = texto.replace(",", "#").replace(".", ",").replace("#", ".")
     return f"R$ {texto}"
+
+
+def _sanitizar_nome_arquivo(identificador):
+    """Substitui espacos e caracteres invalidos de caminho por underscore."""
+    limpo = re.sub(r'[\\/:*?"<>|\s]+', "_", identificador.strip())
+    return limpo.strip("_") or "investimento"
 
 
 class Resultado:
@@ -138,7 +145,8 @@ class Interpretador(Interpreter):
         plt.tight_layout()
 
         os.makedirs(self.diretorio_saida, exist_ok=True)
-        nome_arquivo = f"grafico_{identificador.replace(' ', '_')}.png"
+        nome_seguro = _sanitizar_nome_arquivo(identificador)
+        nome_arquivo = f"grafico_{nome_seguro}.png"
         arquivo = os.path.join(self.diretorio_saida, nome_arquivo)
         plt.savefig(arquivo, dpi=150)
         plt.close()
@@ -182,7 +190,7 @@ class Interpretador(Interpreter):
         plt.tight_layout()
 
         os.makedirs(self.diretorio_saida, exist_ok=True)
-        nomes = "_vs_".join(i.replace(" ", "_") for i in identificadores)
+        nomes = "_vs_".join(_sanitizar_nome_arquivo(i) for i in identificadores)
         nome_arquivo = f"grafico_comparativo_{nomes}.png"
         arquivo = os.path.join(self.diretorio_saida, nome_arquivo)
         plt.savefig(arquivo, dpi=150)

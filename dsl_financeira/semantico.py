@@ -21,6 +21,13 @@ def _texto(token):
     return str(token)[1:-1]
 
 
+def _posicao(no):
+    """Extrai (linha, coluna) de um Tree ou Token do Lark."""
+    if hasattr(no, "meta") and not getattr(no.meta, "empty", True):
+        return getattr(no.meta, "line", None), getattr(no.meta, "column", None)
+    return getattr(no, "line", None), getattr(no, "column", None)
+
+
 class AnalisadorSemantico(Interpreter):
     """AST Visitor (Lark Interpreter) responsavel por alimentar a Tabela de Simbolos."""
 
@@ -40,7 +47,8 @@ class AnalisadorSemantico(Interpreter):
     # ------------------------------------------------------------------
     def declaracao(self, tree):
         identificador = _texto(tree.children[0])
-        simbolo = self.tabela.declarar(identificador)
+        linha, coluna = _posicao(tree)
+        simbolo = self.tabela.declarar(identificador, linha=linha, coluna=coluna)
 
         self._simbolo_atual = simbolo
         self._vistos_atual = set()
@@ -50,6 +58,8 @@ class AnalisadorSemantico(Interpreter):
                 raise ParametroObrigatorioError(
                     identificador,
                     "PERIODO <n> MESES ou APORTE <valor> POR <n> MESES",
+                    linha=linha,
+                    coluna=coluna,
                 )
             if simbolo.imposto_regressivo:
                 simbolo.imposto = aliquota_regressiva_ir(simbolo.periodo)
@@ -57,21 +67,28 @@ class AnalisadorSemantico(Interpreter):
             self._simbolo_atual = None
             self._vistos_atual = set()
 
-    def _registrar_parametro(self, nome, grupo=None, rotulo_conflito=None):
+    def _registrar_parametro(self, nome, tree, grupo=None, rotulo_conflito=None):
         identificador = self._simbolo_atual.identificador
+        linha, coluna = _posicao(tree)
         if nome in self._vistos_atual:
-            raise ParametroDuplicadoError(identificador, nome.upper())
+            raise ParametroDuplicadoError(
+                identificador, nome.upper(), linha=linha, coluna=coluna
+            )
         if grupo and grupo in self._vistos_atual:
             raise ParametroDuplicadoError(
-                identificador, rotulo_conflito or grupo.upper()
+                identificador,
+                rotulo_conflito or grupo.upper(),
+                linha=linha,
+                coluna=coluna,
             )
         self._vistos_atual.add(nome)
         if grupo:
             self._vistos_atual.add(grupo)
 
     def valor_inicial(self, tree):
-        self._registrar_parametro("valor_inicial")
+        self._registrar_parametro("valor_inicial", tree)
         simbolo = self._simbolo_atual
+        linha, coluna = _posicao(tree)
         valor = float(tree.children[0])
         if valor < 0:
             raise ValorForaDoDominioError(
@@ -79,12 +96,17 @@ class AnalisadorSemantico(Interpreter):
                 "VALOR_INICIAL",
                 valor,
                 "O valor inicial nao pode ser negativo.",
+                linha=linha,
+                coluna=coluna,
             )
         simbolo.valor_inicial = valor
 
     def aporte(self, tree):
-        self._registrar_parametro("aporte", grupo="periodo_definido", rotulo_conflito="PERIODO")
+        self._registrar_parametro(
+            "aporte", tree, grupo="periodo_definido", rotulo_conflito="PERIODO"
+        )
         simbolo = self._simbolo_atual
+        linha, coluna = _posicao(tree)
         valor = float(tree.children[0])
         meses = int(tree.children[1])
         if valor < 0:
@@ -93,6 +115,8 @@ class AnalisadorSemantico(Interpreter):
                 "APORTE",
                 valor,
                 "O aporte mensal nao pode ser negativo.",
+                linha=linha,
+                coluna=coluna,
             )
         if meses <= 0:
             raise ValorForaDoDominioError(
@@ -100,13 +124,18 @@ class AnalisadorSemantico(Interpreter):
                 "APORTE ... MESES",
                 meses,
                 "O periodo deve ser maior que zero.",
+                linha=linha,
+                coluna=coluna,
             )
         simbolo.aporte = valor
         simbolo.periodo = meses
 
     def periodo(self, tree):
-        self._registrar_parametro("periodo", grupo="periodo_definido", rotulo_conflito="PERIODO")
+        self._registrar_parametro(
+            "periodo", tree, grupo="periodo_definido", rotulo_conflito="PERIODO"
+        )
         simbolo = self._simbolo_atual
+        linha, coluna = _posicao(tree)
         meses = int(tree.children[0])
         if meses <= 0:
             raise ValorForaDoDominioError(
@@ -114,12 +143,15 @@ class AnalisadorSemantico(Interpreter):
                 "PERIODO ... MESES",
                 meses,
                 "O periodo deve ser maior que zero.",
+                linha=linha,
+                coluna=coluna,
             )
         simbolo.periodo = meses
 
     def taxa(self, tree):
-        self._registrar_parametro("taxa")
+        self._registrar_parametro("taxa", tree)
         simbolo = self._simbolo_atual
+        linha, coluna = _posicao(tree)
         valor = float(tree.children[0])
         if valor < 0:
             raise ValorForaDoDominioError(
@@ -127,12 +159,17 @@ class AnalisadorSemantico(Interpreter):
                 "TAXA",
                 valor,
                 "A taxa de juros nao pode ser negativa.",
+                linha=linha,
+                coluna=coluna,
             )
         simbolo.taxa = valor / 100.0
 
     def imposto(self, tree):
-        self._registrar_parametro("imposto", grupo="imposto_definido", rotulo_conflito="IMPOSTO")
+        self._registrar_parametro(
+            "imposto", tree, grupo="imposto_definido", rotulo_conflito="IMPOSTO"
+        )
         simbolo = self._simbolo_atual
+        linha, coluna = _posicao(tree)
         valor = float(tree.children[0])
         if valor < 0 or valor > 100:
             raise ValorForaDoDominioError(
@@ -140,26 +177,49 @@ class AnalisadorSemantico(Interpreter):
                 "IMPOSTO",
                 valor,
                 "A aliquota deve estar entre 0 e 100 porcento.",
+                linha=linha,
+                coluna=coluna,
             )
         simbolo.imposto = valor / 100.0
 
     def imposto_regressivo(self, tree):
         self._registrar_parametro(
-            "imposto_regressivo", grupo="imposto_definido", rotulo_conflito="IMPOSTO"
+            "imposto_regressivo",
+            tree,
+            grupo="imposto_definido",
+            rotulo_conflito="IMPOSTO",
         )
         self._simbolo_atual.imposto_regressivo = True
 
     # ------------------------------------------------------------------
     # Comandos
     # ------------------------------------------------------------------
+    def _validar_identificadores_comando(self, tree, nome_comando):
+        vistos = set()
+        for token in tree.children:
+            identificador = _texto(token)
+            linha, coluna = _posicao(token)
+            self.tabela.buscar(identificador, linha=linha, coluna=coluna)
+            if identificador in vistos:
+                raise ParametroDuplicadoError(
+                    identificador,
+                    nome_comando,
+                    mensagem=(
+                        f"Comando '{nome_comando}': o investimento "
+                        f"'{identificador}' foi informado mais de uma vez."
+                    ),
+                    linha=linha,
+                    coluna=coluna,
+                )
+            vistos.add(identificador)
+
     def imprimir_resumo(self, tree):
-        identificador = _texto(tree.children[0])
-        self.tabela.buscar(identificador)
+        token = tree.children[0]
+        linha, coluna = _posicao(token)
+        self.tabela.buscar(_texto(token), linha=linha, coluna=coluna)
 
     def gerar_grafico(self, tree):
-        for token in tree.children:
-            self.tabela.buscar(_texto(token))
+        self._validar_identificadores_comando(tree, "GERAR GRAFICO")
 
     def comparar_grafico(self, tree):
-        for token in tree.children:
-            self.tabela.buscar(_texto(token))
+        self._validar_identificadores_comando(tree, "COMPARAR GRAFICO")

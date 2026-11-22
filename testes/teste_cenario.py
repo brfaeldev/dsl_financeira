@@ -14,6 +14,7 @@ from dsl_financeira import (
     AnalisadorSemantico,
     Interpretador,
     Resultado,
+    criar_parser,
     executar,
 )
 from dsl_financeira.erros import (
@@ -42,6 +43,9 @@ class TestArquiteturaCompilador(unittest.TestCase):
     def test_heranca_nativa_visitor_lark(self):
         self.assertTrue(issubclass(AnalisadorSemantico, Interpreter))
         self.assertTrue(issubclass(Interpretador, Interpreter))
+
+    def test_cache_instancia_parser(self):
+        self.assertIs(criar_parser("lalr"), criar_parser("lalr"))
 
 
 class TestSimulacaoFinanceira(unittest.TestCase):
@@ -170,6 +174,31 @@ class TestAnaliseSemantica(unittest.TestCase):
         with self.assertRaises(ParametroObrigatorioError):
             executar(codigo)
 
+    def test_rastreamento_linha_coluna_erro_semantico(self):
+        codigo = (
+            'INVESTIMENTO "TesteLinha"\n'
+            "    VALOR_INICIAL 1000.00\n"
+            "    PERIODO 12 MESES\n"
+            "    TAXA -0.5 PORCENTO AO_MES\n"
+            "FIM\n"
+        )
+        with self.assertRaises(ValorForaDoDominioError) as ctx:
+            executar(codigo)
+        self.assertEqual(ctx.exception.linha, 4)
+        self.assertEqual(ctx.exception.coluna, 5)
+        self.assertIn("Linha 4, Coluna 5", str(ctx.exception))
+
+    def test_cenario_duplicado_em_comparar_grafico(self):
+        codigo = """
+        INVESTIMENTO "CenarioUnico"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+        FIM
+        COMPARAR GRAFICO "CenarioUnico" "CenarioUnico"
+        """
+        with self.assertRaises(ParametroDuplicadoError):
+            executar(codigo)
+
 
 class TestGeracaoGraficos(unittest.TestCase):
     """Valida a geracao de graficos individuais e comparativos em output/."""
@@ -185,6 +214,20 @@ class TestGeracaoGraficos(unittest.TestCase):
         GERAR GRAFICO "Reserva"
         """
         caminho = os.path.join("output", "grafico_Reserva.png")
+        executar(codigo)
+        self.assertTrue(os.path.exists(caminho))
+        os.remove(caminho)
+
+    def test_sanitizacao_nome_arquivo_grafico(self):
+        codigo = """
+        INVESTIMENTO "CDB 110% / Liquidez: Diaria"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+            TAXA 0.9 PORCENTO AO_MES
+        FIM
+        GERAR GRAFICO "CDB 110% / Liquidez: Diaria"
+        """
+        caminho = os.path.join("output", "grafico_CDB_110%_Liquidez_Diaria.png")
         executar(codigo)
         self.assertTrue(os.path.exists(caminho))
         os.remove(caminho)

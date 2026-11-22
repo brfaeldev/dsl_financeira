@@ -4,13 +4,26 @@
 class ErroSemantico(Exception):
     """Classe base para os erros de analise semantica da DSL."""
 
+    def __init__(self, mensagem, linha=None, coluna=None):
+        self.linha = linha
+        self.coluna = coluna
+        if linha is not None and coluna is not None:
+            prefixo = f"(Linha {linha}, Coluna {coluna}) "
+        elif linha is not None:
+            prefixo = f"(Linha {linha}) "
+        else:
+            prefixo = ""
+        super().__init__(f"{prefixo}{mensagem}")
+
 
 class DeclaracaoDuplicadaError(ErroSemantico):
     """Declaracao duplicada do mesmo investimento na Tabela de Simbolos."""
 
-    def __init__(self, identificador):
+    def __init__(self, identificador, linha=None, coluna=None):
         super().__init__(
-            f"Investimento '{identificador}' ja foi declarado anteriormente."
+            f"Investimento '{identificador}' ja foi declarado anteriormente.",
+            linha=linha,
+            coluna=coluna,
         )
         self.identificador = identificador
 
@@ -18,9 +31,11 @@ class DeclaracaoDuplicadaError(ErroSemantico):
 class InvestimentoNaoDeclaradoError(ErroSemantico):
     """Referencia a um investimento nao declarado (IMPRIMIR / GERAR / COMPARAR)."""
 
-    def __init__(self, identificador):
+    def __init__(self, identificador, linha=None, coluna=None):
         super().__init__(
-            f"Investimento '{identificador}' nao foi declarado."
+            f"Investimento '{identificador}' nao foi declarado.",
+            linha=linha,
+            coluna=coluna,
         )
         self.identificador = identificador
 
@@ -28,10 +43,12 @@ class InvestimentoNaoDeclaradoError(ErroSemantico):
 class ValorForaDoDominioError(ErroSemantico):
     """Valor numerico fora do dominio valido do parametro."""
 
-    def __init__(self, identificador, parametro, valor, motivo):
+    def __init__(self, identificador, parametro, valor, motivo, linha=None, coluna=None):
         super().__init__(
             f"Investimento '{identificador}': valor invalido em "
-            f"{parametro} = {valor}. {motivo}"
+            f"{parametro} = {valor}. {motivo}",
+            linha=linha,
+            coluna=coluna,
         )
         self.identificador = identificador
         self.parametro = parametro
@@ -39,13 +56,14 @@ class ValorForaDoDominioError(ErroSemantico):
 
 
 class ParametroDuplicadoError(ErroSemantico):
-    """Parametro declarado mais de uma vez no mesmo bloco INVESTIMENTO."""
+    """Parametro declarado mais de uma vez no mesmo bloco ou comando."""
 
-    def __init__(self, identificador, parametro):
-        super().__init__(
+    def __init__(self, identificador, parametro, mensagem=None, linha=None, coluna=None):
+        texto = mensagem or (
             f"Investimento '{identificador}': parametro '{parametro}' "
             f"declarado mais de uma vez."
         )
+        super().__init__(texto, linha=linha, coluna=coluna)
         self.identificador = identificador
         self.parametro = parametro
 
@@ -53,10 +71,12 @@ class ParametroDuplicadoError(ErroSemantico):
 class ParametroObrigatorioError(ErroSemantico):
     """Ausencia de parametro obrigatorio (ex.: prazo em meses) no bloco INVESTIMENTO."""
 
-    def __init__(self, identificador, parametro):
+    def __init__(self, identificador, parametro, linha=None, coluna=None):
         super().__init__(
             f"Investimento '{identificador}': parametro obrigatorio ausente "
-            f"({parametro})."
+            f"({parametro}).",
+            linha=linha,
+            coluna=coluna,
         )
         self.identificador = identificador
         self.parametro = parametro
