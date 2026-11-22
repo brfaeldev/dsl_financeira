@@ -1,4 +1,10 @@
-"""Interface de Linha de Comando (CLI) da DSL Financeira."""
+"""
+Interface de Linha de Comando - CLI (cli.py)
+
+Gerencia a leitura de arquivos de script (.dsl) informados pelo usuario no
+terminal, aciona o pipeline do interpretador e formata as saidas de erro
+distinguindo falhas semanticas, sintaticas e de execucao.
+"""
 
 import sys
 

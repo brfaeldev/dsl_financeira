@@ -1,16 +1,16 @@
-"""Engine de Execucao (Interpretador) da DSL Financeira.
+"""
+Motor de Execucao e Renderizacao Grafica - AST Visitor (interpretador.py)
 
-Um AST Visitor baseado em lark.visitors.Interpreter le a estrutura validada,
-aplica os calculos de juros compostos e deducoes fiscais, emitindo relatorios
-no terminal ou gerando graficos (individuais e comparativos) com a biblioteca
-Matplotlib.
+Percorre a AST ja validada aplicando as equacoes financeiras de juros compostos,
+valor futuro de anuidades e deducoes de Imposto de Renda, emitindo resumos
+formatados no terminal e graficos individuais ou comparativos via Matplotlib.
 
-Modelo de calculo (conforme a fundamentacao teorica do trabalho):
-    FV_aportes = PMT * ((1 + r)^n - 1) / r      (valor futuro de uma anuidade)
-    FV_inicial = P * (1 + r)^n                  (juros compostos sobre o aporte inicial)
-    Total Investido   = P + PMT * n
-    Rendimento Bruto  = (FV_inicial + FV_aportes) - Total Investido
-    Imposto de Renda  = Rendimento Bruto * t
+Modelo matematico aplicado:
+    FV_aportes          = PMT * ((1 + r)^n - 1) / r
+    FV_inicial          = P * (1 + r)^n
+    Total Investido     = P + PMT * n
+    Rendimento Bruto    = (FV_inicial + FV_aportes) - Total Investido
+    Imposto de Renda    = Rendimento Bruto * t
     Valor Final Liquido = FV_inicial + FV_aportes - Imposto de Renda
 """
 

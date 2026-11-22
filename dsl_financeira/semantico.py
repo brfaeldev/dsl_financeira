@@ -1,9 +1,9 @@
-"""Analise Semantica da DSL Financeira.
+"""
+Analisador Semantico - AST Visitor (semantico.py)
 
-Implementa um AST Visitor usando a infraestrutura nativa da biblioteca Lark
-(lark.visitors.Interpreter) para percorrer a AST, registrar as declaracoes de
-investimento na Tabela de Simbolos e verificar restricoes de integridade
-(e.g., taxas de juros nao negativas, prazos obrigatorios maiores que zero).
+Percorre a Arvore Sintatica Abstrata (AST) via `lark.visitors.Interpreter` para
+popular a Tabela de Simbolos, garantindo a unicidade de declaracoes, a presenca
+de parametros obrigatorios, a validade de dominios numericos e o escopo de uso.
 """
 
 from lark.visitors import Interpreter

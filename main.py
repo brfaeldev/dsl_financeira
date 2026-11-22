@@ -1,4 +1,9 @@
-"""Ponto de entrada na raiz para execucao direta via `python main.py <arquivo.dsl>`."""
+"""
+Ponto de Entrada Principal da Aplicacao (main.py)
+
+Atalho de execucao na raiz do projeto que delega os argumentos recebidos via
+terminal para a Interface de Linha de Comando (CLI) do pacote dsl_financeira.
+"""
 
 import sys
 

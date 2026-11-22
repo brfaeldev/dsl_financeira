@@ -1,4 +1,9 @@
-"""Permite executar o pacote diretamente via `python -m dsl_financeira <arquivo.dsl>`."""
+"""
+Ponto de Entrada do Modulo Executavel (__main__.py)
+
+Habilita a execucao direta do pacote como modulo Python (`python -m dsl_financeira`),
+encaminhando os parametros do sistema operacional para o controlador da CLI.
+"""
 
 import sys
 

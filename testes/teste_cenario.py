@@ -1,8 +1,9 @@
-"""Suite de testes automatizados da DSL Financeira (padrao unittest).
+"""
+Suite de Testes Automatizados da DSL Financeira (teste_cenario.py)
 
-Execucao:
-    python -m unittest discover -s testes -p "teste_*.py" -v
-    python -m testes.teste_cenario
+Valida a aderencia arquitetural do compilador/interpretador (padrao Visitor e
+cache do parser), a precisao matematica das simulacoes financeiras, a captura de
+erros semanticos e a geracao de graficos individuais e comparativos.
 """
 
 import os

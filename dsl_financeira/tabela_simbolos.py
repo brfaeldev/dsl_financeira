@@ -1,9 +1,9 @@
-"""Tabela de Simbolos da DSL Financeira.
+"""
+Tabela de Simbolos e Regras Tributarias (tabela_simbolos.py)
 
-Para cada bloco INVESTIMENTO a tabela mantem uma estrutura contendo:
-  - Identificador: nome do investimento (chave principal)
-  - Atributos: valor inicial (P), aporte mensal (PMT), periodo em meses (n),
-    taxa mensal (r) e aliquota de imposto (t)
+Mantem o dicionario global de investimentos declarados no programa, armazenando
+para cada identificador seus parametros financeiros normalizados (P, PMT, n, r, t)
+e implementando o calculo oficial da tabela regressiva brasileira de IR.
 """
 
 from .erros import DeclaracaoDuplicadaError, InvestimentoNaoDeclaradoError

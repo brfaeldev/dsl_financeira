@@ -1,7 +1,9 @@
-"""Front-End da DSL Financeira: Lexer e Parser (biblioteca Lark).
+"""
+Front-End Lexico e Sintatico (parser.py)
 
-O codigo de entrada '.dsl' e convertido em tokens pelo Lexer e validado pela
-gramatica no Parser, resultando na AST.
+Carrega a gramatica formal EBNF da linguagem e instancia (com cache em memoria)
+o analisador sintatico LALR(1)/Earley via biblioteca Lark, convertendo o codigo
+fonte (.dsl) na Arvore Sintatica Abstrata (AST) com metadados de linha e coluna.
 """
 
 import functools

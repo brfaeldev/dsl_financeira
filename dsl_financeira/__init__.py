@@ -1,7 +1,9 @@
-"""DSL Financeira - Especificacao e Projeto de uma Linguagem de Dominio
-Especifico (DSL) para Modelagem e Simulacao Financeira de Investimentos.
+"""
+Nucleo e API Publica do Pacote (dsl_financeira/__init__.py)
 
-Pipeline: Codigo Source -> Parser -> AST -> Execucao
+Centraliza e expoe as classes e funcoes principais do interpretador (Parser,
+Tabela de Simbolos, Analisador Semantico, Motor de Execucao e Excecoes), alem
+de fornecer a funcao fachada `executar()` que orquestra o pipeline completo.
 """
 
 from .erros import (

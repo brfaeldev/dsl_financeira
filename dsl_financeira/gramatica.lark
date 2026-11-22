@@ -1,5 +1,12 @@
-// Gramatica formal da DSL Financeira (EBNF do artigo, traduzida para a sintaxe do Lark)
+// ============================================================================
+// Especificacao da Gramatica Formal EBNF (gramatica.lark)
 //
+// Define as regras sintaticas (declaracoes de investimento, parametros e
+// comandos de saida) e os padroes lexicos (identificadores, numeros e
+// comentarios) utilizados pelo gerador de parsers Lark para construir a AST.
+// ============================================================================
+//
+// Gramatica em notacao EBNF (conforme o artigo IEEE):
 // programa          ::= (declaracao | comando)+
 // declaracao        ::= "INVESTIMENTO" STRING bloco_parametros "FIM"
 // bloco_parametros  ::= parametro+

@@ -1,4 +1,10 @@
-"""Excecoes customizadas lancadas pelo modulo semantico da DSL Financeira."""
+"""
+Hierarquia de Excecoes Semanticas (erros.py)
+
+Define as classes de erro customizadas lancadas durante a Analise Semantica e
+manipulacao da Tabela de Simbolos, enriquecidas com o rastreamento opcional de
+linha e coluna do codigo-fonte (.dsl).
+"""
 
 
 class ErroSemantico(Exception):
