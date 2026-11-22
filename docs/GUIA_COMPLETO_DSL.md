@@ -21,20 +21,23 @@ Um arquivo `.dsl` segue naturalmente esta estrutura de cima para baixo:
 > **Regra importante (*Declare-Before-Use*)**: Você sempre deve declarar um `INDICE` ou `INVESTIMENTO` **antes** de usá-lo em um comando abaixo.
 
 ### Passo 3: Executar no Terminal
-Abra o terminal na pasta raiz do projeto (`c:\Users\bruno\Desktop\dsl_financeira`) e execute:
+Abra o terminal na pasta raiz do projeto (`dsl_financeira/`) e execute:
 
 ```powershell
+# Instalar as dependências (caso ainda não tenha instalado):
+pip install -r requirements.txt
+
 # Executar um arquivo .dsl:
 python main.py exemplos/minha_carteira.dsl
 
 # (Opcional) Escolher outra pasta para salvar os gráficos e relatórios:
 python main.py exemplos/minha_carteira.dsl -o meus_resultados
 
-# Ou abrir o modo interativo (REPL) para digitar linha por linha no terminal:
+# Ou abrir o modo interativo (REPL) para digitar linha por linha no terminal
+# (no REPL, use LISTAR para ver índices/investimentos na memória e SAIR para encerrar):
 python main.py --repl
 
 # Ou abrir a interface visual (Playground Web em Streamlit) no navegador:
-pip install streamlit
 streamlit run app.py
 ```
 
@@ -107,7 +110,7 @@ Se omitido, o investimento é considerado isento (`0%`).
 | **1. Alíquota Fixa ou Isento** | `IMPOSTO <numero> PORCENTO` | `IMPOSTO 15.0 PORCENTO` ou `IMPOSTO 0.0 PORCENTO` (para LCI/LCA/CRI/CRA/Debênture Incentivada). |
 | **2. Tabela Regressiva Global** | `IMPOSTO REGRESSIVO` | Aplica a tabela oficial de Renda Fixa conforme o prazo total: `22,5%` (até 6m), `20%` (7 a 12m), `17,5%` (13 a 24m) e `15%` (acima de 24m). |
 | **3. Tabela Regressiva por Safra** | `IMPOSTO REGRESSIVO POR_SAFRA` | Calcula o IR individualmente para cada aporte mensal segundo o tempo que **aquele aporte** ficou investido ($n - k$ meses). |
-| **4. Come-Cotas (Fundos)** | `IMPOSTO COME_COTAS` | Antecipa o IR a cada 6 meses (`15%` para fundos de longo prazo $>12\text{m}$ ou `20%` para curto prazo $\le 12\text{m}$) reduzindo o saldo semestralmente. |
+| **4. Come-Cotas (Fundos)** | `IMPOSTO COME_COTAS` | Antecipa o IR a cada 6 meses (`15%` para fundos de longo prazo $>12\text{m}$ ou `20%` para curto prazo $\le 12\text{m}$) reduzindo o saldo semestralmente e aplicando a alíquota regressiva correspondente ao prazo decorrido nos meses intermediários. |
 
 ---
 
@@ -121,9 +124,9 @@ Colocados fora dos blocos `INVESTIMENTO`:
 | **Gráfico Estático PNG** | `GERAR GRAFICO "<Inv1>" ["<Inv2>" ...]` | `GERAR GRAFICO "Meu_CDB"` | Salva `output/grafico_Meu_CDB.png` com as curvas Bruta, Líquida, Líquida Real e Total Investido. |
 | **Gráfico Comparativo PNG** | `COMPARAR GRAFICO "<Inv1>" "<Inv2>" [...]` | `COMPARAR GRAFICO "CDB" "LCI" "Tesouro"` | Salva um único `.png` comparando lado a lado todos os investimentos listados. |
 | **Gráfico Interativo HTML** | `GERAR GRAFICO_INTERATIVO "<Inv1>" ["<Inv2>" ...]` | `GERAR GRAFICO_INTERATIVO "CDB" "LCI"` | Salva um arquivo `.html` interativo (Plotly) em `output/` para abrir no navegador e inspecionar mês a mês com o mouse. |
-| **Exportar Planilha CSV** | `EXPORTAR CSV "<Inv1>" ["<Inv2>" ...]` | `EXPORTAR CSV "Meu_CDB"` | Salva `output/evolucao_Meu_CDB.csv` com a evolução mês a mês (`0..n`) pronta para abrir no Excel. |
-| **Exportar JSON** | `EXPORTAR JSON "<Inv1>" ["<Inv2>" ...]` | `EXPORTAR JSON "CDB" "LCI"` | Salva arquivo `.json` estruturado com parâmetros, resumo e série temporal mensal. |
-| **Relatório Consolidado Markdown** | `GERAR RELATORIO "<arquivo.md>" ["<Inv1>" ...]` | `GERAR RELATORIO "relatorio.md"` | Gera `output/relatorio.md` com tabela comparativa de todos os investimentos, destaque do vencedor e lista de gráficos. |
+| **Exportar Planilha CSV** | `EXPORTAR CSV "<Inv1>" ["<Inv2>" ...]` | `EXPORTAR CSV "Meu_CDB"` | Salva `output/evolucao_Meu_CDB.csv` com a evolução mês a mês (`0..n`, incluindo resgates e custos de administração) pronta para abrir no Excel. |
+| **Exportar JSON** | `EXPORTAR JSON "<Inv1>" ["<Inv2>" ...]` | `EXPORTAR JSON "CDB" "LCI"` | Salva arquivo `.json` estruturado com parâmetros, resumo completo e série temporal mensal. |
+| **Relatório Consolidado Markdown** | `GERAR RELATORIO "<arquivo.md>" ["<Inv1>" ...]` | `GERAR RELATORIO "relatorio.md"` | Gera `output/relatorio.md` com tabela comparativa de todos os investimentos, destaque do vencedor líquido e lista de artefatos gerados. |
 
 ---
 
@@ -133,7 +136,7 @@ Se algum desses erros ocorrer, o interpretador mostrará `[Erro Semantico] (Linh
 1. **Não declarar prazo ou capital**: Todo bloco `INVESTIMENTO` precisa ter prazo (`PERIODO` ou `APORTE ... POR ...`) e capital positivo (`VALOR_INICIAL` ou `APORTE`).
 2. **Conflito entre `APORTE` e `PERIODO`**: Se o investimento tem aportes mensais, use apenas `APORTE 500.00 POR 12 MESES` (não adicione `PERIODO 12 MESES` embaixo).
 3. **Conflito de `IMPOSTO` ou `TAXA`**: Declare apenas uma linha de `TAXA` e no máximo uma linha de `IMPOSTO` por bloco.
-4. **Valores negativos ou fora de faixa**: Taxas, aportes e valores iniciais não podem ser negativos; alíquotas de imposto devem estar entre `0` e `100`; prazos devem ser maiores que zero.
+4. **Valores negativos ou fora de faixa**: Taxas, aportes e valores iniciais não podem ser negativos; alíquotas de imposto devem estar entre `0` e `100` (e `TAXA_ADMINISTRACAO` menor que `100`); prazos devem estar entre `1` e `12000` meses (`1000` anos) e taxas até `100000%`.
 5. **Evento fora do prazo ou resgate maior que o saldo**: Em `APORTE_EXTRA ... NO_MES X` ou `RESGATE ... NO_MES X`, o mês `X` deve estar entre `1` e o total de meses do investimento, e o valor do resgate não pode superar o saldo acumulado naquele mês.
 
 ---

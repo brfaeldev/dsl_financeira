@@ -2,7 +2,12 @@
 
 Implementacao do interpretador descrito no artigo *"Especificacao e Projeto de
 uma Linguagem de Dominio Especifico (DSL) para Modelagem e Simulacao Financeira
-de Investimentos"* (Bruno Rafael Barbosa; Joao Pedro Magrin — FHO Araras).
+de Investimentos"* (FHO | Fundacao Herminio Ometto — Araras/SP).
+
+## 👥 Identificação
+
+- **Bruno Rafael Barbosa** — RA: 112944
+- **João Pedro Magrin** — RA: 113164
 
 ## Estrutura do Projeto
 
@@ -57,13 +62,13 @@ Codigo Source (.dsl) -> Parser (Lark) -> AST -> Analise Semantica -> Execucao
 ```
 
 1. **Front-End (Lexer e Parser)** — `dsl_financeira/parser.py` + `gramatica.lark`
-   (biblioteca **Lark**, parser LALR(1); Earley tambem suportado).
-2. **Analise Semantica e Tabela de Simbolos** — `semantico.py` + `tabela_simbolos.py`
-   (heranca nativa de `lark.visitors.Interpreter`, conversao automatica de `AO_ANO` e `ANOS` para base mensal e validacao de indexadores e fluxos de caixa).
-3. **Engine de Execucao (Interpretador)** — `interpretador.py` (AST Visitor via
-   `lark.visitors.Interpreter`, juros compostos, deflacao real pela Equacao de Fisher,
-   deducoes fiscais fixas, regressivas, por safra de aporte ou come-cotas, simulacao de
-   renda passiva e geracao de graficos PNG/HTML, exportacoes CSV/JSON e relatorios Markdown).
+   (biblioteca **Lark**, parser LALR(1) com cache em memoria; algoritmo Earley tambem suportado).
+2. **Analise Semantica e Tabela de Simbolos** — `semantico.py` + `tabela_simbolos.py` + `erros.py`
+   (heranca nativa de `lark.visitors.Interpreter`, conversao automatica de `AO_ANO` e `ANOS` para base mensal, validacao de limites de dominio/overflow, indexadores e viabilidade de saldo em resgates).
+3. **Engine de Execucao e Modulos Especializados** — `interpretador.py` (orquestrador AST Visitor via `lark.visitors.Interpreter`) + `motor.py` (juros compostos, deflacao real pela Equacao de Fisher, deducoes fiscais fixas, regressivas, por safra de aporte ou come-cotas e simulacao de renda passiva/usufruto) + `graficos.py` (graficos PNG via Matplotlib e HTML interativo via Plotly) + `exportacao.py` (CSV, JSON e relatorios executivos em Markdown).
+4. **Interfaces de Usuario** — `cli.py` (execucao de scripts `.dsl` via terminal e modo interativo REPL), `playground.py` / `app.py` (Playground Web e Inspetor de Compilador em Streamlit) e `vscode-dsl-financeira/` (extensao TextMate de realce de sintaxe para VS Code).
+
+> Para um manual passo a passo de todas as construcoes da linguagem, consulte [docs/GUIA_COMPLETO_DSL.md](docs/GUIA_COMPLETO_DSL.md).
 
 ## Gramatica (EBNF)
 
@@ -96,14 +101,24 @@ comando           ::= "IMPRIMIR" "RESUMO" STRING
                     | "SIMULAR" "RENDA" STRING "RETIRADA" NUMBER ("AO_MES" | "AO_ANO")
 ```
 
-## Uso
+## Instalação e Uso
 
-Execucao de scripts `.dsl`:
+Instalacao das dependencias:
+
+```bash
+pip install -r requirements.txt
+```
+
+Execucao de scripts `.dsl` via CLI:
 
 ```bash
 python -m dsl_financeira exemplos/aposentadoria.dsl
 python -m dsl_financeira exemplos/comparacao_cenarios.dsl
 python -m dsl_financeira exemplos/planejamento_avancado.dsl
+python -m dsl_financeira exemplos/referencia_completa.dsl
+
+# Opcional: definir diretorio customizado para os artefatos gerados (-o)
+python main.py exemplos/planejamento_avancado.dsl -o output
 ```
 
 Modo interativo (REPL):
@@ -115,13 +130,12 @@ python -m dsl_financeira --repl
 Playground Web visual (Streamlit):
 
 ```bash
-pip install streamlit
 streamlit run app.py
 ```
 
 ## Testes
 
-Execucao com o runner padrao `unittest` do Python:
+Execucao da suite modular de **38 testes automatizados** com o runner padrao `unittest` do Python:
 
 ```bash
 python -m unittest discover -s testes -p "teste_*.py" -v
