@@ -1,8 +1,9 @@
 """Engine de Execucao (Interpretador) da DSL Financeira.
 
-Um AST Visitor le a estrutura validada, aplica os calculos de juros compostos e
-deducoes fiscais, emitindo relatorios no terminal ou gerando graficos com a
-biblioteca Matplotlib.
+Um AST Visitor baseado em lark.visitors.Interpreter le a estrutura validada,
+aplica os calculos de juros compostos e deducoes fiscais, emitindo relatorios
+no terminal ou gerando graficos (individuais e comparativos) com a biblioteca
+Matplotlib.
 
 Modelo de calculo (conforme a fundamentacao teorica do trabalho):
     FV_aportes = PMT * ((1 + r)^n - 1) / r      (valor futuro de uma anuidade)
@@ -14,6 +15,7 @@ Modelo de calculo (conforme a fundamentacao teorica do trabalho):
 """
 
 from lark import Tree
+from lark.visitors import Interpreter
 
 from .semantico import _texto
 
@@ -49,66 +51,148 @@ class Resultado:
         self.valor_final_liquido = self.valor_final_bruto - self.imposto_renda
 
 
-class Interpretador:
-    """AST Visitor que executa as declaracoes e comandos do programa."""
+class Interpretador(Interpreter):
+    """AST Visitor (Lark Interpreter) que executa os comandos do programa."""
 
     def __init__(self, tabela):
+        super().__init__()
         self.tabela = tabela
 
     def executar(self, ast):
-        for no in ast.children:
-            if not isinstance(no, Tree):
-                continue
-            if no.data == "imprimir_resumo":
-                self.imprimir_resumo(_texto(no.children[0]))
-            elif no.data == "gerar_grafico":
-                self.gerar_grafico(_texto(no.children[0]))
+        """Percorre a AST executando os nos de comando via Visitor."""
+        self.visit(ast)
+
+    def declaracao(self, tree):
+        """Declaracoes ja foram processadas na fase de Analise Semantica."""
+        return None
+
+    # ------------------------------------------------------------------
+    # Simulacao mes a mes
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _simular_evolucao(simbolo):
+        meses = list(range(simbolo.periodo + 1))
+        patrimonio_bruto = []
+        patrimonio_liquido = []
+        investido = []
+        saldo = simbolo.valor_inicial
+
+        for mes in meses:
+            if mes > 0:
+                saldo = saldo * (1 + simbolo.taxa) + simbolo.aporte
+            total_investido_mes = simbolo.valor_inicial + simbolo.aporte * mes
+            rendimento_mes = saldo - total_investido_mes
+            aliquota = simbolo.aliquota_para_mes(mes)
+            saldo_liquido = saldo - (rendimento_mes * aliquota)
+
+            patrimonio_bruto.append(saldo)
+            patrimonio_liquido.append(saldo_liquido)
+            investido.append(total_investido_mes)
+
+        return meses, patrimonio_bruto, patrimonio_liquido, investido
 
     # ------------------------------------------------------------------
     # IMPRIMIR RESUMO
     # ------------------------------------------------------------------
-    def imprimir_resumo(self, identificador):
+    def imprimir_resumo(self, alvo):
+        if isinstance(alvo, Tree):
+            identificador = _texto(alvo.children[0])
+        else:
+            identificador = str(alvo)
+
         simbolo = self.tabela.buscar(identificador)
         resultado = Resultado(simbolo)
 
         print(f"=== RESUMO DO INVESTIMENTO: {resultado.identificador} ===")
-        print(f"Total Investido: {_moeda(resultado.total_investido)}")
-        print(f"Rendimento Bruto: {_moeda(resultado.rendimento_bruto)}")
-        print(f"Imposto de Renda: {_moeda(resultado.imposto_renda)}")
-        print(f"Valor Final Liquido: {_moeda(resultado.valor_final_liquido)}")
+        print(f"{'Total Investido:':<21}{_moeda(resultado.total_investido)}")
+        print(f"{'Rendimento Bruto:':<21}{_moeda(resultado.rendimento_bruto)}")
+        print(f"{'Imposto de Renda:':<21}{_moeda(resultado.imposto_renda)}")
+        print(f"{'Valor Final Liquido:':<21}{_moeda(resultado.valor_final_liquido)}")
         return resultado
 
     # ------------------------------------------------------------------
-    # GERAR GRAFICO
+    # GERAR GRAFICO / COMPARAR GRAFICO
     # ------------------------------------------------------------------
-    def gerar_grafico(self, identificador):
+    def gerar_grafico(self, alvo):
+        if isinstance(alvo, Tree):
+            identificadores = [_texto(t) for t in alvo.children]
+        elif isinstance(alvo, (list, tuple)):
+            identificadores = [str(i) for i in alvo]
+        else:
+            identificadores = [str(alvo)]
+
+        if len(identificadores) > 1:
+            return self.comparar_grafico(identificadores)
+
+        identificador = identificadores[0]
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
         simbolo = self.tabela.buscar(identificador)
+        meses, patrimonio_bruto, patrimonio_liquido, investido = (
+            self._simular_evolucao(simbolo)
+        )
 
-        meses = list(range(simbolo.periodo + 1))
-        patrimonio = []
-        investido = []
-        saldo = simbolo.valor_inicial
-        for mes in meses:
-            if mes > 0:
-                saldo = saldo * (1 + simbolo.taxa) + simbolo.aporte
-            patrimonio.append(saldo)
-            investido.append(simbolo.valor_inicial + simbolo.aporte * mes)
-
-        plt.figure()
-        plt.plot(meses, patrimonio, label="Patrimonio acumulado")
-        plt.plot(meses, investido, label="Total investido")
+        plt.figure(figsize=(8, 5))
+        plt.plot(meses, patrimonio_bruto, label="Patrimonio acumulado (bruto)")
+        plt.plot(meses, patrimonio_liquido, label="Patrimonio acumulado (liquido)")
+        plt.plot(meses, investido, linestyle="--", label="Total investido")
         plt.title(f"Curva de crescimento do patrimonio: {identificador}")
         plt.xlabel("Meses")
         plt.ylabel("Valor (R$)")
         plt.legend()
         plt.grid(True)
+        plt.tight_layout()
 
         arquivo = f"grafico_{identificador.replace(' ', '_')}.png"
-        plt.savefig(arquivo)
+        plt.savefig(arquivo, dpi=150)
         plt.close()
         print(f"Grafico gerado em: {arquivo}")
+        return arquivo
+
+    def comparar_grafico(self, alvo):
+        if isinstance(alvo, Tree):
+            identificadores = [_texto(t) for t in alvo.children]
+        else:
+            identificadores = [str(i) for i in alvo]
+
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(9, 5.5))
+        for identificador in identificadores:
+            simbolo = self.tabela.buscar(identificador)
+            meses, patrimonio_bruto, patrimonio_liquido, _ = (
+                self._simular_evolucao(simbolo)
+            )
+            linha = plt.plot(
+                meses,
+                patrimonio_liquido,
+                linewidth=2,
+                label=f"{identificador} (liquido)",
+            )
+            cor = linha[0].get_color()
+            plt.plot(
+                meses,
+                patrimonio_bruto,
+                linestyle="--",
+                alpha=0.55,
+                color=cor,
+                label=f"{identificador} (bruto)",
+            )
+
+        plt.title("Analise comparativa de crescimento do patrimonio entre cenarios")
+        plt.xlabel("Meses")
+        plt.ylabel("Valor (R$)")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+
+        nomes = "_vs_".join(i.replace(" ", "_") for i in identificadores)
+        arquivo = f"grafico_comparativo_{nomes}.png"
+        plt.savefig(arquivo, dpi=150)
+        plt.close()
+        print(f"Grafico comparativo gerado em: {arquivo}")
         return arquivo
