@@ -8,6 +8,7 @@ Contem:
 """
 
 import contextlib
+import inspect
 import io
 import json
 import os
@@ -193,8 +194,19 @@ def compilar_e_simular_dsl(codigo):
 # ----------------------------------------------------------------------
 # 2. Componentes Visuais do Streamlit
 # ----------------------------------------------------------------------
+def _kwargs_largura_total(componente):
+    """Retorna o argumento de largura total compativel com a versao instalada do Streamlit."""
+    try:
+        if "width" in inspect.signature(componente).parameters:
+            return {"width": "stretch"}
+    except (TypeError, ValueError):
+        pass
+    return {"use_container_width": True}
+
+
 def _renderizar_sidebar(st, exemplos):
     """Renderiza a barra lateral com seletor de exemplos e assistente gerador de DSL."""
+    kw_btn = _kwargs_largura_total(st.button)
     with st.sidebar:
         st.title("⚙️ Ferramentas da DSL")
 
@@ -210,7 +222,7 @@ def _renderizar_sidebar(st, exemplos):
                     else 0
                 ),
             )
-            if st.button("📂 Carregar Exemplo no Editor", use_container_width=True):
+            if st.button("📂 Carregar Exemplo no Editor", **kw_btn):
                 with open(exemplos[nome_exemplo], "r", encoding="utf-8") as f:
                     st.session_state["codigo_dsl"] = f.read()
                 st.rerun()
@@ -226,7 +238,7 @@ def _renderizar_sidebar(st, exemplos):
             ind_unid = st.selectbox(
                 "Unidade", options=["AO_ANO", "AO_MES"], key="ind_unid"
             )
-            if st.button("Inserir INDICE no Topo", use_container_width=True):
+            if st.button("Inserir INDICE no Topo", **kw_btn):
                 linha_ind = gerar_declaracao_indice_dsl(ind_nome, ind_taxa, ind_unid)
                 st.session_state["codigo_dsl"] = (
                     linha_ind + "\n" + st.session_state["codigo_dsl"]
@@ -358,7 +370,7 @@ def _renderizar_sidebar(st, exemplos):
                 else 15.0
             )
 
-            if st.button("Inserir INVESTIMENTO no Código", use_container_width=True):
+            if st.button("Inserir INVESTIMENTO no Código", **kw_btn):
                 bloco = gerar_bloco_investimento_dsl(
                     nome=inv_nome,
                     valor_inicial=inv_p,
@@ -386,6 +398,8 @@ def _renderizar_sidebar(st, exemplos):
 
 def _renderizar_editor(st):
     """Renderiza o editor de codigo .dsl e botoes de acao, retornando o codigo atual."""
+    kw_btn = _kwargs_largura_total(st.button)
+    kw_dl = _kwargs_largura_total(st.download_button)
     with st.expander("📝 Editor de Código (.dsl)", expanded=True):
         codigo_atual = st.text_area(
             "Escreva ou edite seu script .dsl abaixo:",
@@ -399,7 +413,7 @@ def _renderizar_editor(st):
             st.button(
                 "▶️ Compilar e Executar Script DSL",
                 type="primary",
-                use_container_width=True,
+                **kw_btn,
             )
         with col_btn2:
             st.download_button(
@@ -407,7 +421,7 @@ def _renderizar_editor(st):
                 data=codigo_atual.encode("utf-8"),
                 file_name="cenario_simulacao.dsl",
                 mime="text/plain",
-                use_container_width=True,
+                **kw_dl,
             )
     return codigo_atual
 
@@ -464,7 +478,9 @@ def _renderizar_aba_dashboard(st, resultados):
         }
         for simbolo, res, _ in resultados
     ]
-    st.dataframe(tabela_comparativa, use_container_width=True, hide_index=True)
+    kw_df = _kwargs_largura_total(st.dataframe)
+    kw_dl = _kwargs_largura_total(st.download_button)
+    st.dataframe(tabela_comparativa, hide_index=True, **kw_df)
 
     st.divider()
     st.subheader("📈 Curvas de Crescimento Patrimonial")
@@ -519,7 +535,7 @@ def _renderizar_aba_dashboard(st, resultados):
     _, res_sel, serie_sel = next(
         item for item in resultados if item[0].identificador == inv_selecionado
     )
-    st.dataframe(serie_sel, use_container_width=True, hide_index=True)
+    st.dataframe(serie_sel, hide_index=True, **kw_df)
 
     buf_csv = io.StringIO()
     escrever_csv_registros(serie_sel, buf_csv, campos=list(serie_sel[0].keys()))
@@ -543,7 +559,7 @@ def _renderizar_aba_dashboard(st, resultados):
             data=buf_csv.getvalue().encode("utf-8"),
             file_name=f"evolucao_{inv_selecionado}.csv",
             mime="text/csv",
-            use_container_width=True,
+            **kw_dl,
         )
     with col_dl2:
         st.download_button(
@@ -551,7 +567,7 @@ def _renderizar_aba_dashboard(st, resultados):
             data=json.dumps(payload_json, indent=2, ensure_ascii=False).encode("utf-8"),
             file_name=f"evolucao_{inv_selecionado}.json",
             mime="application/json",
-            use_container_width=True,
+            **kw_dl,
         )
 
 
@@ -615,6 +631,7 @@ def _renderizar_aba_renda(st, resultados):
 
 def _renderizar_aba_compilador(st, tabela, resultado_exec):
     """Renderiza a Aba 3: Raio-X do Compilador (Tabela de Simbolos, AST e Tokens)."""
+    kw_df = _kwargs_largura_total(st.dataframe)
     st.markdown(
         "Esta visão expõe as estruturas internas construídas pelas três fases do interpretador: "
         "**1. Análise Léxica (Tokens)** → **2. Análise Sintática (AST Lark)** → **3. Análise Semântica (Tabela de Símbolos)**."
@@ -634,8 +651,8 @@ def _renderizar_aba_compilador(st, tabela, resultado_exec):
                 }
                 for k, v in indices_decl.items()
             ],
-            use_container_width=True,
             hide_index=True,
+            **kw_df,
         )
 
     st.markdown("**Entidades de Investimento (`_simbolos`):**")
@@ -657,7 +674,7 @@ def _renderizar_aba_compilador(st, tabela, resultado_exec):
         }
         for s in tabela.listar()
     ]
-    st.dataframe(linhas_simbolos, use_container_width=True, hide_index=True)
+    st.dataframe(linhas_simbolos, hide_index=True, **kw_df)
 
     col_ast, col_tok = st.columns(2)
     with col_ast:
@@ -669,9 +686,9 @@ def _renderizar_aba_compilador(st, tabela, resultado_exec):
         )
         st.dataframe(
             resultado_exec["tokens"],
-            use_container_width=True,
             hide_index=True,
             height=380,
+            **kw_df,
         )
 
 

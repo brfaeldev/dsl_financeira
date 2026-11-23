@@ -137,6 +137,17 @@ class TestCLI(unittest.TestCase):
         )
         self.assertIn("VALOR_INICIAL 0.00", bloco_sem_aporte)
 
+        # Valida a renderizacao completa da interface Streamlit via AppTest
+        from streamlit.testing.v1 import AppTest
+
+        caminho_app = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "app.py"
+        )
+        at = AppTest.from_file(caminho_app, default_timeout=30)
+        at.run()
+        self.assertEqual(len(at.exception), 0)
+        self.assertGreater(len(at.metric), 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
