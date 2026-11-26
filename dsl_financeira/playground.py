@@ -12,6 +12,7 @@ import inspect
 import io
 import json
 import os
+import re
 import tempfile
 
 from lark.exceptions import LarkError
@@ -31,6 +32,14 @@ _DIRETORIO_PACOTE = os.path.dirname(os.path.abspath(__file__))
 _DIRETORIO_RAIZ = os.path.dirname(_DIRETORIO_PACOTE)
 _DIRETORIO_EXEMPLOS = os.path.join(_DIRETORIO_RAIZ, "exemplos")
 
+_RE_DECL_INDICE = re.compile(r'^\s*INDICE\s+"([^"\r\n]*)"(?:\s|$)')
+_RE_DECL_INVESTIMENTO = re.compile(r'^\s*INVESTIMENTO\s+"([^"\r\n]*)"(?:\s|$)')
+_PADROES_INDICES = {
+    "CDI": (10.75, "AO_ANO"),
+    "SELIC": (10.75, "AO_ANO"),
+    "IPCA": (4.50, "AO_ANO"),
+}
+
 
 # ----------------------------------------------------------------------
 # 1. Funcoes Puras de Dominio e Geracao de Codigo DSL (Testaveis)
@@ -49,6 +58,42 @@ def gerar_declaracao_indice_dsl(nome, taxa, unidade="AO_ANO"):
     """Gera uma linha valida de declaracao de INDICE na sintaxe da DSL."""
     nome_limpo = nome.strip().replace('"', "") or "CDI"
     return f'INDICE "{nome_limpo}" {float(taxa):.2f} PORCENTO {unidade}'
+
+
+def extrair_declaracoes_script(codigo):
+    """Extrai os nomes de INDICE e INVESTIMENTO ja declarados no script .dsl."""
+    indices = []
+    investimentos = []
+    for linha in codigo.splitlines():
+        m_ind = _RE_DECL_INDICE.match(linha)
+        if m_ind:
+            nome = m_ind.group(1)
+            if nome not in indices:
+                indices.append(nome)
+            continue
+        m_inv = _RE_DECL_INVESTIMENTO.match(linha)
+        if m_inv:
+            nome = m_inv.group(1)
+            if nome not in investimentos:
+                investimentos.append(nome)
+    return {"indices": indices, "investimentos": investimentos}
+
+
+def inserir_ou_atualizar_indice_dsl(codigo, nome, taxa, unidade="AO_ANO"):
+    """Insere um INDICE no topo ou atualiza a declaracao existente caso ja exista."""
+    nome_limpo = nome.strip().replace('"', "") or "CDI"
+    nova_linha = gerar_declaracao_indice_dsl(nome_limpo, taxa, unidade)
+    linhas = codigo.splitlines()
+    for idx, linha in enumerate(linhas):
+        m_ind = _RE_DECL_INDICE.match(linha)
+        if m_ind and m_ind.group(1) == nome_limpo:
+            linhas[idx] = nova_linha
+            sufixo = "\n" if codigo.endswith("\n") else ""
+            return "\n".join(linhas) + sufixo, True
+
+    if codigo.strip():
+        return nova_linha + "\n" + codigo, False
+    return nova_linha + "\n", False
 
 
 def gerar_bloco_investimento_dsl(
@@ -72,6 +117,8 @@ def gerar_bloco_investimento_dsl(
 ):
     """Monta um bloco INVESTIMENTO ... FIM e seu comando IMPRIMIR RESUMO na sintaxe da DSL."""
     nome_limpo = nome.strip().replace('"', "") or "Meu_Investimento"
+    indice_taxa_limpo = indice_taxa.strip().replace('"', "") or "CDI"
+    indice_inflacao_limpo = indice_inflacao.strip().replace('"', "") or "IPCA"
     linhas = [f'INVESTIMENTO "{nome_limpo}"']
     tem_aporte_positivo = bool(usar_aporte and aporte_mensal > 0)
 
@@ -87,11 +134,11 @@ def gerar_bloco_investimento_dsl(
 
     if modo_taxa == "Pos-Fixada (% de Indice)":
         linhas.append(
-            f'    TAXA {float(taxa_valor):.2f} PORCENTO DO "{indice_taxa.strip()}"'
+            f'    TAXA {float(taxa_valor):.2f} PORCENTO DO "{indice_taxa_limpo}"'
         )
     elif modo_taxa == "Hibrida (Indice + Taxa Fixa)":
         linhas.append(
-            f'    TAXA "{indice_taxa.strip()}" + {float(taxa_valor):.2f} PORCENTO {unidade_taxa}'
+            f'    TAXA "{indice_taxa_limpo}" + {float(taxa_valor):.2f} PORCENTO {unidade_taxa}'
         )
     else:
         linhas.append(f"    TAXA {float(taxa_valor):.2f} PORCENTO {unidade_taxa}")
@@ -106,7 +153,7 @@ def gerar_bloco_investimento_dsl(
             f"    INFLACAO {float(inflacao_valor):.2f} PORCENTO {unidade_inflacao}"
         )
     elif modo_inflacao == "Usar Indice":
-        linhas.append(f'    INFLACAO "{indice_inflacao.strip()}"')
+        linhas.append(f'    INFLACAO "{indice_inflacao_limpo}"')
 
     if modo_imposto == "REGRESSIVO":
         linhas.append("    IMPOSTO REGRESSIVO")
@@ -120,6 +167,19 @@ def gerar_bloco_investimento_dsl(
     linhas.append("FIM")
     linhas.append(f'IMPRIMIR RESUMO "{nome_limpo}"')
     return "\n".join(linhas)
+
+
+def inserir_bloco_investimento_dsl(codigo, bloco, indices_ausentes=None):
+    """Anexa um bloco INVESTIMENTO ao script, declarando indices ausentes no topo se solicitado."""
+    codigo_atualizado = codigo
+    for nome_ind in indices_ausentes or []:
+        taxa_ind, unid_ind = _PADROES_INDICES.get(nome_ind.upper(), (10.0, "AO_ANO"))
+        codigo_atualizado, _ = inserir_ou_atualizar_indice_dsl(
+            codigo_atualizado, nome_ind, taxa_ind, unid_ind
+        )
+    if codigo_atualizado.strip():
+        return codigo_atualizado.rstrip() + "\n\n" + bloco + "\n"
+    return bloco + "\n"
 
 
 def compilar_e_simular_dsl(codigo):
@@ -207,6 +267,8 @@ def _kwargs_largura_total(componente):
 def _renderizar_sidebar(st, exemplos):
     """Renderiza a barra lateral com seletor de exemplos e assistente gerador de DSL."""
     kw_btn = _kwargs_largura_total(st.button)
+    declaracoes = extrair_declaracoes_script(st.session_state["codigo_dsl"])
+
     with st.sidebar:
         st.title("⚙️ Ferramentas da DSL")
 
@@ -238,17 +300,36 @@ def _renderizar_sidebar(st, exemplos):
             ind_unid = st.selectbox(
                 "Unidade", options=["AO_ANO", "AO_MES"], key="ind_unid"
             )
-            if st.button("Inserir INDICE no Topo", **kw_btn):
-                linha_ind = gerar_declaracao_indice_dsl(ind_nome, ind_taxa, ind_unid)
-                st.session_state["codigo_dsl"] = (
-                    linha_ind + "\n" + st.session_state["codigo_dsl"]
+            ind_nome_limpo = ind_nome.strip().replace('"', "") or "CDI"
+            indice_ja_existe = ind_nome_limpo in declaracoes["indices"]
+            if indice_ja_existe:
+                st.caption(
+                    f'ℹ️ O índice `"{ind_nome_limpo}"` já está declarado e será atualizado.'
                 )
+            rotulo_btn_ind = (
+                "Atualizar INDICE no Script"
+                if indice_ja_existe
+                else "Inserir INDICE no Topo"
+            )
+            if st.button(rotulo_btn_ind, **kw_btn):
+                novo_codigo, _ = inserir_ou_atualizar_indice_dsl(
+                    st.session_state["codigo_dsl"], ind_nome, ind_taxa, ind_unid
+                )
+                st.session_state["codigo_dsl"] = novo_codigo
                 st.rerun()
 
         with st.expander("➕ Adicionar Bloco INVESTIMENTO", expanded=False):
             inv_nome = st.text_input(
                 "Nome do Investimento", value="Novo_Cenario", key="inv_nome"
             )
+            inv_nome_limpo = inv_nome.strip().replace('"', "") or "Meu_Investimento"
+            nome_duplicado = inv_nome_limpo in declaracoes["investimentos"]
+            if nome_duplicado:
+                st.warning(
+                    f'Já existe um investimento `"{inv_nome_limpo}"` no script. '
+                    "Altere o nome para evitar erro de duplicidade."
+                )
+
             inv_p = st.number_input(
                 "Valor Inicial (R$)",
                 min_value=0.0,
@@ -270,6 +351,12 @@ def _renderizar_sidebar(st, exemplos):
                 if inv_tem_aporte
                 else 0.0
             )
+            capital_valido = inv_p > 0 or (inv_tem_aporte and inv_pmt > 0)
+            if not capital_valido:
+                st.warning(
+                    "Informe um Valor Inicial ou um Aporte Mensal maior que zero."
+                )
+
             col_p1, col_p2 = st.columns(2)
             with col_p1:
                 inv_prazo = st.number_input(
@@ -289,21 +376,46 @@ def _renderizar_sidebar(st, exemplos):
                 ],
                 key="inv_modo_taxa",
             )
-            inv_taxa_val = st.number_input(
-                "Valor / Percentual da Taxa (%)",
-                min_value=0.0,
-                value=1.0,
-                step=0.1,
-                key="inv_taxa_val",
-            )
-            inv_unid_t = st.selectbox(
-                "Unidade da Taxa", options=["AO_MES", "AO_ANO"], key="inv_unid_t"
-            )
-            inv_ind_t = (
-                st.text_input("Nome do Índice da Taxa", value="CDI", key="inv_ind_t")
-                if inv_modo_taxa != "Prefixada"
-                else "CDI"
-            )
+            if inv_modo_taxa == "Pos-Fixada (% de Indice)":
+                inv_taxa_val = st.number_input(
+                    "Percentual do Índice (%)",
+                    min_value=0.0,
+                    value=100.0,
+                    step=5.0,
+                    key="inv_taxa_val_pos",
+                )
+                inv_unid_t = "AO_MES"
+                inv_ind_t = st.text_input(
+                    "Nome do Índice da Taxa", value="CDI", key="inv_ind_t_pos"
+                )
+            elif inv_modo_taxa == "Hibrida (Indice + Taxa Fixa)":
+                inv_taxa_val = st.number_input(
+                    "Taxa Fixa Adicional (%)",
+                    min_value=0.0,
+                    value=6.0,
+                    step=0.25,
+                    key="inv_taxa_val_hib",
+                )
+                inv_unid_t = st.selectbox(
+                    "Unidade da Taxa Adicional",
+                    options=["AO_ANO", "AO_MES"],
+                    key="inv_unid_t_hib",
+                )
+                inv_ind_t = st.text_input(
+                    "Nome do Índice da Taxa", value="IPCA", key="inv_ind_t_hib"
+                )
+            else:
+                inv_taxa_val = st.number_input(
+                    "Taxa Prefixada (%)",
+                    min_value=0.0,
+                    value=1.0,
+                    step=0.1,
+                    key="inv_taxa_val_pref",
+                )
+                inv_unid_t = st.selectbox(
+                    "Unidade da Taxa", options=["AO_MES", "AO_ANO"], key="inv_unid_t_pref"
+                )
+                inv_ind_t = "CDI"
 
             inv_modo_inf = st.selectbox(
                 "Correção por Inflação",
@@ -370,30 +482,71 @@ def _renderizar_sidebar(st, exemplos):
                 else 15.0
             )
 
+            indices_ausentes = []
+            if inv_modo_taxa != "Prefixada":
+                ind_t_limpo = inv_ind_t.strip().replace('"', "") or "CDI"
+                if ind_t_limpo not in declaracoes["indices"]:
+                    indices_ausentes.append(ind_t_limpo)
+            if inv_modo_inf == "Usar Indice":
+                ind_i_limpo = inv_ind_inf.strip().replace('"', "") or "IPCA"
+                if (
+                    ind_i_limpo not in declaracoes["indices"]
+                    and ind_i_limpo not in indices_ausentes
+                ):
+                    indices_ausentes.append(ind_i_limpo)
+
+            auto_declarar_indices = False
+            if indices_ausentes:
+                st.info(
+                    f"Índices ainda não declarados no script: {', '.join(indices_ausentes)}."
+                )
+                auto_declarar_indices = st.checkbox(
+                    "Declarar automaticamente índices ausentes no topo",
+                    value=True,
+                    key="inv_auto_ind",
+                )
+
+            bloco = gerar_bloco_investimento_dsl(
+                nome=inv_nome,
+                valor_inicial=inv_p,
+                usar_aporte=inv_tem_aporte,
+                aporte_mensal=inv_pmt,
+                prazo=inv_prazo,
+                unidade_prazo=inv_unid_p,
+                modo_taxa=inv_modo_taxa,
+                taxa_valor=inv_taxa_val,
+                unidade_taxa=inv_unid_t,
+                indice_taxa=inv_ind_t,
+                modo_inflacao=inv_modo_inf,
+                inflacao_valor=inv_inf_val,
+                unidade_inflacao=inv_unid_inf,
+                indice_inflacao=inv_ind_inf,
+                taxa_administracao=inv_adm,
+                modo_imposto=inv_imp,
+                aliquota_fixa=inv_aliq,
+            )
+            st.caption("Pré-visualização do bloco gerado:")
+            st.code(bloco, language="text")
+
             if st.button("Inserir INVESTIMENTO no Código", **kw_btn):
-                bloco = gerar_bloco_investimento_dsl(
-                    nome=inv_nome,
-                    valor_inicial=inv_p,
-                    usar_aporte=inv_tem_aporte,
-                    aporte_mensal=inv_pmt,
-                    prazo=inv_prazo,
-                    unidade_prazo=inv_unid_p,
-                    modo_taxa=inv_modo_taxa,
-                    taxa_valor=inv_taxa_val,
-                    unidade_taxa=inv_unid_t,
-                    indice_taxa=inv_ind_t,
-                    modo_inflacao=inv_modo_inf,
-                    inflacao_valor=inv_inf_val,
-                    unidade_inflacao=inv_unid_inf,
-                    indice_inflacao=inv_ind_inf,
-                    taxa_administracao=inv_adm,
-                    modo_imposto=inv_imp,
-                    aliquota_fixa=inv_aliq,
-                )
-                st.session_state["codigo_dsl"] = (
-                    st.session_state["codigo_dsl"].rstrip() + "\n\n" + bloco + "\n"
-                )
-                st.rerun()
+                if nome_duplicado:
+                    st.error(
+                        f'Já existe um investimento "{inv_nome_limpo}" no script. '
+                        "Escolha outro nome antes de inserir."
+                    )
+                elif not capital_valido:
+                    st.error(
+                        "Informe um Valor Inicial ou Aporte Mensal maior que zero."
+                    )
+                else:
+                    st.session_state["codigo_dsl"] = inserir_bloco_investimento_dsl(
+                        st.session_state["codigo_dsl"],
+                        bloco,
+                        indices_ausentes=(
+                            indices_ausentes if auto_declarar_indices else None
+                        ),
+                    )
+                    st.rerun()
 
 
 def _renderizar_editor(st):
@@ -403,10 +556,9 @@ def _renderizar_editor(st):
     with st.expander("📝 Editor de Código (.dsl)", expanded=True):
         codigo_atual = st.text_area(
             "Escreva ou edite seu script .dsl abaixo:",
-            value=st.session_state["codigo_dsl"],
             height=260,
+            key="codigo_dsl",
         )
-        st.session_state["codigo_dsl"] = codigo_atual
 
         col_btn1, col_btn2 = st.columns([3, 1])
         with col_btn1:

@@ -16,8 +16,11 @@ import unittest
 from dsl_financeira.cli import iniciar_repl, main as cli_main
 from dsl_financeira.playground import (
     compilar_e_simular_dsl,
+    extrair_declaracoes_script,
     gerar_bloco_investimento_dsl,
     gerar_declaracao_indice_dsl,
+    inserir_bloco_investimento_dsl,
+    inserir_ou_atualizar_indice_dsl,
     listar_exemplos_disponiveis,
 )
 from testes.teste_motor import CENARIO_APOSENTADORIA
@@ -147,6 +150,84 @@ class TestCLI(unittest.TestCase):
         at.run()
         self.assertEqual(len(at.exception), 0)
         self.assertGreater(len(at.metric), 0)
+
+    def test_playground_assistente_visual_e_sincronizacao(self):
+        codigo_base = (
+            '# INDICE "Ignorado" 1.0 PORCENTO AO_ANO\n'
+            'INDICE "CDI" 10.75 PORCENTO AO_ANO\n'
+            'INVESTIMENTO "Base"\n'
+            "    VALOR_INICIAL 1000.00\n"
+            "    PERIODO 12 MESES\n"
+            "FIM\n"
+        )
+        decls = extrair_declaracoes_script(codigo_base)
+        self.assertEqual(decls["indices"], ["CDI"])
+        self.assertEqual(decls["investimentos"], ["Base"])
+
+        # Atualiza indice existente sem duplicar e insere novo indice no topo
+        atualizado, foi_atualizado = inserir_ou_atualizar_indice_dsl(
+            codigo_base, "CDI", 11.25, "AO_ANO"
+        )
+        self.assertTrue(foi_atualizado)
+        self.assertEqual(atualizado.count('INDICE "CDI"'), 1)
+        self.assertIn('INDICE "CDI" 11.25 PORCENTO AO_ANO', atualizado)
+
+        bloco = gerar_bloco_investimento_dsl(
+            nome="Pos_IPCA",
+            modo_taxa="Pos-Fixada (% de Indice)",
+            taxa_valor=100.0,
+            indice_taxa=' "CDI" ',
+            modo_inflacao="Usar Indice",
+            indice_inflacao="IPCA",
+        )
+        self.assertIn('TAXA 100.00 PORCENTO DO "CDI"', bloco)
+        self.assertIn('INFLACAO "IPCA"', bloco)
+
+        com_auto_indice = inserir_bloco_investimento_dsl(
+            atualizado, bloco, indices_ausentes=["IPCA"]
+        )
+        self.assertIn('INDICE "IPCA" 4.50 PORCENTO AO_ANO', com_auto_indice)
+        self.assertTrue(compilar_e_simular_dsl(com_auto_indice)["sucesso"])
+
+        from streamlit.testing.v1 import AppTest
+
+        caminho_app = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "app.py"
+        )
+        at = AppTest.from_file(caminho_app, default_timeout=30)
+        at.run()
+
+        # Edicao simultanea no editor + insercao via assistente preserva a edicao
+        at.text_area[0].set_value(
+            'INVESTIMENTO "Editado"\n'
+            "    VALOR_INICIAL 2000.00\n"
+            "    PERIODO 12 MESES\n"
+            "    TAXA 1.0 PORCENTO AO_MES\n"
+            "FIM\n"
+        )
+        at.sidebar.button[2].click()
+        at.run()
+        self.assertEqual(len(at.exception), 0)
+        self.assertEqual(len(at.error), 0)
+        self.assertIn('INVESTIMENTO "Editado"', at.text_area[0].value)
+        self.assertIn('INVESTIMENTO "Novo_Cenario"', at.text_area[0].value)
+
+        # Inserir mesmo nome novamente bloqueia duplicidade sem quebrar o script
+        at.sidebar.button[2].click().run()
+        self.assertEqual(at.text_area[0].value.count('INVESTIMENTO "Novo_Cenario"'), 1)
+        self.assertTrue(
+            any("Novo_Cenario" in e.value for e in at.sidebar.error)
+        )
+
+        # Pos-Fixada oculta unidade, assume 100% e auto-declara indices ausentes
+        at.sidebar.text_input[1].set_value("CDB_Pos")
+        at.sidebar.selectbox[3].select("Pos-Fixada (% de Indice)").run()
+        at.sidebar.selectbox[4].select("Usar Indice").run()
+        at.sidebar.button[2].click().run()
+        self.assertEqual(len(at.error), 0)
+        self.assertIn('INDICE "CDI"', at.text_area[0].value)
+        self.assertIn('INDICE "IPCA"', at.text_area[0].value)
+        self.assertIn('TAXA 100.00 PORCENTO DO "CDI"', at.text_area[0].value)
 
 
 if __name__ == "__main__":
