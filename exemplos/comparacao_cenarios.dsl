@@ -1,7 +1,7 @@
 # ============================================================================
 # Analise Comparativa entre Multiplos Cenarios (comparacao_cenarios.dsl)
 #
-# Script de demonstracao da Secao IV-B do artigo IEEE que compara tres opcoes
+# Script de demonstracao da Secao IV-C do artigo IEEE que compara tres opcoes
 # de investimento com o mesmo fluxo de desembolso sob diferentes taxas e
 # regimes tributarios (aliquota fixa, tabela regressiva de IR e isencao fiscal).
 # ============================================================================

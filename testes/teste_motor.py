@@ -36,7 +36,7 @@ class TestSimulacaoFinanceira(unittest.TestCase):
     """Valida os calculos matematicos e tributarios do motor de execucao."""
 
     def test_cenario_proposto_artigo(self):
-        """Valida o cenario base 'Aposentadoria' (Secao IV-A do artigo IEEE)."""
+        """Valida o cenario base 'Aposentadoria' (Secao IV-B do artigo IEEE)."""
         tabela = executar(CENARIO_APOSENTADORIA)
         simbolo = tabela.buscar("Aposentadoria")
 

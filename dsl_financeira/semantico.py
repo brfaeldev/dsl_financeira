@@ -74,7 +74,7 @@ class AnalisadorSemantico(Interpreter):
     # ------------------------------------------------------------------
     # Declaracao de Indexadores Macroeconomicos (CDI, SELIC, IPCA, etc.)
     # ------------------------------------------------------------------
-    def declaracao_indice(self, tree):
+    def decl_indice(self, tree):
         """Valida e registra um indexador macroeconomico global na Tabela de Simbolos."""
         identificador = _texto(tree.children[0])
         linha, coluna = _posicao(tree)
@@ -417,12 +417,12 @@ class AnalisadorSemantico(Interpreter):
         percentual = float(tree.children[0])
         token_indice = tree.children[1]
         nome_indice = _texto(token_indice)
-        if percentual < 0:
+        if percentual < 0 or percentual > MAX_TAXA_PERCENTUAL:
             raise ValorForaDoDominioError(
                 simbolo.identificador,
                 "TAXA",
                 percentual,
-                "O percentual do indexador nao pode ser negativo.",
+                f"O percentual do indexador deve estar entre 0 e {MAX_TAXA_PERCENTUAL:g} porcento.",
                 linha=linha,
                 coluna=coluna,
             )
@@ -447,12 +447,12 @@ class AnalisadorSemantico(Interpreter):
         simbolo = self._simbolo_atual
         linha, coluna = _posicao(tree)
         valor = float(token_valor)
-        if valor < 0:
+        if valor < 0 or valor > MAX_TAXA_PERCENTUAL:
             raise ValorForaDoDominioError(
                 simbolo.identificador,
                 "TAXA",
                 valor,
-                "A taxa prefixada adicional nao pode ser negativa.",
+                f"A taxa prefixada adicional deve estar entre 0 e {MAX_TAXA_PERCENTUAL:g} porcento.",
                 linha=linha,
                 coluna=coluna,
             )
@@ -552,7 +552,7 @@ class AnalisadorSemantico(Interpreter):
             rotulo_conflito="IMPOSTO",
             mensagem_conflito=(
                 f"Investimento '{identificador}': conflito de parametros entre "
-                f"'IMPOSTO <valor> PORCENTO' e 'IMPOSTO REGRESSIVO'."
+                f"modalidades de 'IMPOSTO'."
             ),
         )
         simbolo = self._simbolo_atual
@@ -579,7 +579,7 @@ class AnalisadorSemantico(Interpreter):
             rotulo_conflito="IMPOSTO",
             mensagem_conflito=(
                 f"Investimento '{identificador}': conflito de parametros entre "
-                f"'IMPOSTO <valor> PORCENTO' e 'IMPOSTO REGRESSIVO'."
+                f"modalidades de 'IMPOSTO'."
             ),
         )
         self._simbolo_atual.imposto_regressivo = True

@@ -1,8 +1,7 @@
 # ============================================================================
 # Regras de Exclusao de Versionamento Git (.gitignore)
 #
-# Define artefatos de build, caches do Python, ambientes virtuais, graficos
-# gerados em runtime (output/) e rascunhos locais ignorados pelo Git.
+# Define artefatos de build, caches do Python e ambientes virtuais ignorados pelo Git.
 # ============================================================================
 
 # Byte-compiled / optimized / DLL files
@@ -47,16 +46,6 @@ htmlcov/
 # Environment variables
 .env
 .env.*
-
-# Saidas geradas pela DSL Financeira (graficos Matplotlib)
-output/
-grafico_*.png
-
-# Rascunhos internos do artigo IEEE (mantem docs/GUIA_COMPLETO_DSL.md versionado)
-docs/*.pdf
-docs/ANALISE_PROJETO.md
-docs/GUIA_ARTIGO_FINAL.md
-docs/PONTOS_EVOLUCAO.md
 
 # Arquivos temporarios e logs
 *.log

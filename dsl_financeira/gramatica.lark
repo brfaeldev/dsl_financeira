@@ -6,39 +6,40 @@
 // padroes lexicos utilizados pelo gerador de parsers Lark para construir a AST.
 // ============================================================================
 //
-// Gramatica em notacao EBNF:
-// programa          ::= (declaracao_indice | declaracao | comando)+
-// declaracao_indice ::= "INDICE" STRING NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-// declaracao        ::= "INVESTIMENTO" STRING bloco_parametros "FIM"
-// bloco_parametros  ::= parametro+
-// parametro         ::= "VALOR_INICIAL" NUMBER
-//                     | "APORTE" NUMBER "POR" INT ("MESES" | "ANOS")
-//                     | "APORTE_EXTRA" NUMBER "NO_MES" INT
-//                     | "RESGATE" NUMBER "NO_MES" INT
-//                     | "PERIODO" INT ("MESES" | "ANOS")
-//                     | "TAXA" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-//                     | "TAXA" NUMBER "PORCENTO" "DO" STRING
-//                     | "TAXA" STRING "+" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-//                     | "TAXA" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO") "+" STRING
-//                     | "TAXA_ADMINISTRACAO" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-//                     | "INFLACAO" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-//                     | "INFLACAO" STRING
-//                     | "IMPOSTO" NUMBER "PORCENTO"
-//                     | "IMPOSTO" "REGRESSIVO" ["POR_SAFRA"]
-//                     | "IMPOSTO" "COME_COTAS"
-// comando           ::= "IMPRIMIR" "RESUMO" STRING
-//                     | "GERAR" "GRAFICO" STRING+
-//                     | "GERAR" "GRAFICO_INTERATIVO" STRING+
-//                     | "COMPARAR" "GRAFICO" STRING STRING+
-//                     | "EXPORTAR" ("CSV" | "JSON") STRING+
-//                     | "GERAR" "RELATORIO" STRING+
-//                     | "SIMULAR" "RENDA" STRING "RETIRADA" NUMBER ("AO_MES" | "AO_ANO")
+// Gramatica em notacao EBNF (equivalente ao Codigo 1 do artigo):
+// programa         ::= (decl_indice | declaracao | comando)+
+// decl_indice      ::= "INDICE" STRING numero "PORCENTO" UNIDADE_TAXA
+// declaracao       ::= "INVESTIMENTO" STRING bloco_parametros "FIM"
+// bloco_parametros ::= parametro+
+// parametro        ::= "VALOR_INICIAL" numero
+//                    | "APORTE" numero "POR" INT UNIDADE_PERIODO
+//                    | "APORTE_EXTRA" numero "NO_MES" INT
+//                    | "RESGATE" numero "NO_MES" INT
+//                    | "PERIODO" INT UNIDADE_PERIODO
+//                    | "TAXA" numero "PORCENTO" UNIDADE_TAXA
+//                    | "TAXA" numero "PORCENTO" "DO" STRING
+//                    | "TAXA" STRING "+" numero "PORCENTO" UNIDADE_TAXA
+//                    | "TAXA" numero "PORCENTO" UNIDADE_TAXA "+" STRING
+//                    | "TAXA_ADMINISTRACAO" numero "PORCENTO" UNIDADE_TAXA
+//                    | "INFLACAO" numero "PORCENTO" UNIDADE_TAXA
+//                    | "INFLACAO" STRING
+//                    | "IMPOSTO" numero "PORCENTO"
+//                    | "IMPOSTO" "REGRESSIVO" ["POR_SAFRA"]
+//                    | "IMPOSTO" "COME_COTAS"
+// comando          ::= "IMPRIMIR" "RESUMO" STRING
+//                    | "GERAR" "GRAFICO" STRING+
+//                    | "GERAR" "GRAFICO_INTERATIVO" STRING+
+//                    | "COMPARAR" "GRAFICO" STRING STRING+
+//                    | "EXPORTAR" ("CSV" | "JSON") STRING+
+//                    | "GERAR" "RELATORIO" STRING+
+//                    | "SIMULAR" "RENDA" STRING "RETIRADA" numero UNIDADE_TAXA
+// numero           ::= NUMBER | INT
 
 // Regra inicial: um script .dsl contem declaracoes de indices, investimentos e/ou comandos
-programa: (declaracao_indice | declaracao | comando)+
+programa: (decl_indice | declaracao | comando)+
 
 // Declaracao global de um indexador macroeconomico (ex.: CDI, SELIC, IPCA)
-declaracao_indice: "INDICE" STRING numero "PORCENTO" UNIDADE_TAXA
+decl_indice: "INDICE" STRING numero "PORCENTO" UNIDADE_TAXA
 
 // Bloco declarativo que registra um novo cenario de investimento na Tabela de Simbolos
 declaracao: "INVESTIMENTO" STRING bloco_parametros "FIM"

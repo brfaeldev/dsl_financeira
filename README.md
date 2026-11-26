@@ -1,8 +1,6 @@
 # DSL Financeira
 
-Implementacao do interpretador descrito no artigo *"Especificacao e Projeto de
-uma Linguagem de Dominio Especifico (DSL) para Modelagem e Simulacao Financeira
-de Investimentos"* (FHO | Fundacao Herminio Ometto — Araras/SP).
+Implementacao do interpretador descrito no artigo *"Especificacao, Implementacao e Validacao de uma Linguagem de Dominio Especifico (DSL) para Modelagem e Simulacao Financeira de Investimentos"* (FHO | Fundacao Herminio Ometto — Araras/SP).
 
 ## 👥 Identificação
 
@@ -34,8 +32,8 @@ dsl_financeira/
 │   ├── graficos.py                  # Renderizacao grafica estatica (PNG) e interativa (HTML Plotly)
 │   ├── exportacao.py                # Exportadores CSV/JSON, relatorios Markdown e formatacao
 │   └── erros.py                     # Hierarquia de excecoes semanticas customizadas
-├── docs/                            # Documentacao e guias de uso da linguagem
-│   └── GUIA_COMPLETO_DSL.md         # Manual passo a passo de sintaxe e comandos da DSL
+├── docs/                            # Documentacao e artigo do projeto
+│   └── Teoria_da_Computação_e_Compiladores.pdf  # Artigo IEEE final da DSL Financeira
 ├── exemplos/                        # Scripts de demonstracao na linguagem .dsl
 │   ├── aposentadoria.dsl            # Cenario base do artigo IEEE
 │   ├── comparacao_cenarios.dsl      # Analise comparativa entre multiplos investimentos
@@ -68,37 +66,38 @@ Codigo Source (.dsl) -> Parser (Lark) -> AST -> Analise Semantica -> Execucao
 3. **Engine de Execucao e Modulos Especializados** — `interpretador.py` (orquestrador AST Visitor via `lark.visitors.Interpreter`) + `motor.py` (juros compostos, deflacao real pela Equacao de Fisher, deducoes fiscais fixas, regressivas, por safra de aporte ou come-cotas e simulacao de renda passiva/usufruto) + `graficos.py` (graficos PNG via Matplotlib e HTML interativo via Plotly) + `exportacao.py` (CSV, JSON e relatorios executivos em Markdown).
 4. **Interfaces de Usuario** — `cli.py` (execucao de scripts `.dsl` via terminal e modo interativo REPL), `playground.py` / `app.py` (Playground Web e Inspetor de Compilador em Streamlit) e `vscode-dsl-financeira/` (extensao TextMate de realce de sintaxe para VS Code).
 
-> Para um manual passo a passo de todas as construcoes da linguagem, consulte [docs/GUIA_COMPLETO_DSL.md](docs/GUIA_COMPLETO_DSL.md).
+> Para a especificacao formal completa, fundamentacao matematica e validacao experimental, consulte [docs/Teoria_da_Computação_e_Compiladores.pdf](docs/Teoria_da_Computação_e_Compiladores.pdf) e o script modelo [exemplos/referencia_completa.dsl](exemplos/referencia_completa.dsl).
 
 ## Gramatica (EBNF)
 
 ```text
-programa          ::= (declaracao_indice | declaracao | comando)+
-declaracao_indice ::= "INDICE" STRING NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-declaracao        ::= "INVESTIMENTO" STRING bloco_parametros "FIM"
-bloco_parametros  ::= parametro+
-parametro         ::= "VALOR_INICIAL" NUMBER
-                    | "APORTE" NUMBER "POR" INT ("MESES" | "ANOS")
-                    | "APORTE_EXTRA" NUMBER "NO_MES" INT
-                    | "RESGATE" NUMBER "NO_MES" INT
-                    | "PERIODO" INT ("MESES" | "ANOS")
-                    | "TAXA" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-                    | "TAXA" NUMBER "PORCENTO" "DO" STRING
-                    | "TAXA" STRING "+" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-                    | "TAXA" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO") "+" STRING
-                    | "TAXA_ADMINISTRACAO" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-                    | "INFLACAO" NUMBER "PORCENTO" ("AO_MES" | "AO_ANO")
-                    | "INFLACAO" STRING
-                    | "IMPOSTO" NUMBER "PORCENTO"
-                    | "IMPOSTO" "REGRESSIVO" ["POR_SAFRA"]
-                    | "IMPOSTO" "COME_COTAS"
-comando           ::= "IMPRIMIR" "RESUMO" STRING
-                    | "GERAR" "GRAFICO" STRING+
-                    | "GERAR" "GRAFICO_INTERATIVO" STRING+
-                    | "COMPARAR" "GRAFICO" STRING STRING+
-                    | "EXPORTAR" ("CSV" | "JSON") STRING+
-                    | "GERAR" "RELATORIO" STRING+
-                    | "SIMULAR" "RENDA" STRING "RETIRADA" NUMBER ("AO_MES" | "AO_ANO")
+programa         ::= (decl_indice | declaracao | comando)+
+decl_indice      ::= "INDICE" STRING numero "PORCENTO" UNIDADE_TAXA
+declaracao       ::= "INVESTIMENTO" STRING bloco_parametros "FIM"
+bloco_parametros ::= parametro+
+parametro        ::= "VALOR_INICIAL" numero
+                   | "APORTE" numero "POR" INT UNIDADE_PERIODO
+                   | "APORTE_EXTRA" numero "NO_MES" INT
+                   | "RESGATE" numero "NO_MES" INT
+                   | "PERIODO" INT UNIDADE_PERIODO
+                   | "TAXA" numero "PORCENTO" UNIDADE_TAXA
+                   | "TAXA" numero "PORCENTO" "DO" STRING
+                   | "TAXA" STRING "+" numero "PORCENTO" UNIDADE_TAXA
+                   | "TAXA" numero "PORCENTO" UNIDADE_TAXA "+" STRING
+                   | "TAXA_ADMINISTRACAO" numero "PORCENTO" UNIDADE_TAXA
+                   | "INFLACAO" numero "PORCENTO" UNIDADE_TAXA
+                   | "INFLACAO" STRING
+                   | "IMPOSTO" numero "PORCENTO"
+                   | "IMPOSTO" "REGRESSIVO" ["POR_SAFRA"]
+                   | "IMPOSTO" "COME_COTAS"
+comando          ::= "IMPRIMIR" "RESUMO" STRING
+                   | "GERAR" "GRAFICO" STRING+
+                   | "GERAR" "GRAFICO_INTERATIVO" STRING+
+                   | "COMPARAR" "GRAFICO" STRING STRING+
+                   | "EXPORTAR" ("CSV" | "JSON") STRING+
+                   | "GERAR" "RELATORIO" STRING+
+                   | "SIMULAR" "RENDA" STRING "RETIRADA" numero UNIDADE_TAXA
+numero           ::= NUMBER | INT
 ```
 
 ## Instalação e Uso

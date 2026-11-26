@@ -53,7 +53,7 @@ class Interpretador(Interpreter):
         """Percorre a AST executando os nos de comando via Visitor."""
         self.visit(ast)
 
-    def declaracao_indice(self, tree):
+    def decl_indice(self, tree):
         """No-op na fase de execucao: indexadores ja foram populados na Tabela de Simbolos."""
         return None
 

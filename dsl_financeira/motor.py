@@ -215,7 +215,7 @@ class Resultado:
         self.custo_administracao = 0.0
 
         if not simbolo.usa_simulacao_detalhada:
-            # Formulas fechadas classicas (Secao II-B do artigo IEEE)
+            # Formulas fechadas classicas (Secao II-C do artigo IEEE)
             if r == 0:
                 fv_aportes = PMT * n
             else:

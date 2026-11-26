@@ -121,6 +121,18 @@ class TestAnaliseSemantica(unittest.TestCase):
             executar(codigo)
         self.assertIn("conflito de parametros", str(ctx.exception))
 
+        codigo_come_cotas = """
+        INVESTIMENTO "ConflitoComeCotas"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+            IMPOSTO COME_COTAS
+            IMPOSTO 15.0 PORCENTO
+        FIM
+        """
+        with self.assertRaises(ParametroDuplicadoError) as ctx_cc:
+            executar(codigo_come_cotas)
+        self.assertIn("modalidades de 'IMPOSTO'", str(ctx_cc.exception))
+
     def test_conflito_imposto_fixo_e_regressivo(self):
         codigo = """
         INVESTIMENTO "ConflitoImposto"
@@ -133,6 +145,18 @@ class TestAnaliseSemantica(unittest.TestCase):
         with self.assertRaises(ParametroDuplicadoError) as ctx:
             executar(codigo)
         self.assertIn("conflito de parametros", str(ctx.exception))
+
+        codigo_come_cotas = """
+        INVESTIMENTO "ConflitoComeCotas"
+            VALOR_INICIAL 1000.00
+            PERIODO 12 MESES
+            IMPOSTO COME_COTAS
+            IMPOSTO 15.0 PORCENTO
+        FIM
+        """
+        with self.assertRaises(ParametroDuplicadoError) as ctx_cc:
+            executar(codigo_come_cotas)
+        self.assertIn("modalidades de 'IMPOSTO'", str(ctx_cc.exception))
 
     def test_identificador_vazio_ou_espacos(self):
         codigo = """
@@ -239,6 +263,30 @@ class TestAnaliseSemantica(unittest.TestCase):
                     VALOR_INICIAL 1000.00
                     PERIODO 12 MESES
                     TAXA 200000.0 PORCENTO AO_MES
+                FIM
+                """
+            )
+
+        with self.assertRaises(ValorForaDoDominioError):
+            executar(
+                """
+                INDICE "CDI" 10.0 PORCENTO AO_ANO
+                INVESTIMENTO "TaxaIndexadaExcessiva"
+                    VALOR_INICIAL 1000.00
+                    PERIODO 12 MESES
+                    TAXA 200000.0 PORCENTO DO "CDI"
+                FIM
+                """
+            )
+
+        with self.assertRaises(ValorForaDoDominioError):
+            executar(
+                """
+                INDICE "IPCA" 4.5 PORCENTO AO_ANO
+                INVESTIMENTO "TaxaHibridaExcessiva"
+                    VALOR_INICIAL 1000.00
+                    PERIODO 12 MESES
+                    TAXA "IPCA" + 200000.0 PORCENTO AO_MES
                 FIM
                 """
             )
